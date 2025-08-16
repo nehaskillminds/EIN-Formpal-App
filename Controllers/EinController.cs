@@ -17,15 +17,18 @@ namespace EinAutomation.Api.Controllers
         private readonly IAutomationOrchestrator _orchestrator;
         private readonly IFormDataMapper _formDataMapper;
         private readonly ILogger<EinController> _logger;
+        private readonly ILoggerFactory _loggerFactory;
 
         public EinController(
             IAutomationOrchestrator orchestrator,
             IFormDataMapper formDataMapper,
-            ILogger<EinController> logger)
+            ILogger<EinController> logger,
+            ILoggerFactory loggerFactory)
         {
             _orchestrator = orchestrator;
             _formDataMapper = formDataMapper;
             _logger = logger;
+            _loggerFactory = loggerFactory;
         }
 
         [HttpGet("health")]
@@ -52,6 +55,33 @@ namespace EinAutomation.Api.Controllers
                 return StatusCode(500, new
                 {
                     Status = "Unhealthy",
+                    Error = ex.Message,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+        }
+
+        [HttpGet("test-chromedriver")]
+        public IActionResult TestChromeDriver()
+        {
+            try
+            {
+                var testService = new TestChromeDriver(_loggerFactory.CreateLogger<TestChromeDriver>());
+                var success = testService.TestChromeDriverInitialization();
+                
+                return Ok(new
+                {
+                    Success = success,
+                    Message = success ? "ChromeDriver test passed" : "ChromeDriver test failed",
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ChromeDriver test failed");
+                return StatusCode(500, new
+                {
+                    Success = false,
                     Error = ex.Message,
                     Timestamp = DateTime.UtcNow
                 });

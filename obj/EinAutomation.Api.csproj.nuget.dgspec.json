@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj": {}
+    "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api - Copy (1)\\EinAutomationLocal.Api - Copy\\EinAutomationLocal.Api - Copy\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj": {}
   },
   "projects": {
-    "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj": {
+    "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api - Copy (1)\\EinAutomationLocal.Api - Copy\\EinAutomationLocal.Api - Copy\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj",
+        "projectUniqueName": "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api - Copy (1)\\EinAutomationLocal.Api - Copy\\EinAutomationLocal.Api - Copy\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj",
         "projectName": "EinAutomation.Api",
-        "projectPath": "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj",
+        "projectPath": "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api - Copy (1)\\EinAutomationLocal.Api - Copy\\EinAutomationLocal.Api - Copy\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj",
         "packagesPath": "C:\\Users\\skill\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api\\EinAutomation.Api\\EinAutomation.Api\\obj\\",
+        "outputPath": "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api - Copy (1)\\EinAutomationLocal.Api - Copy\\EinAutomationLocal.Api - Copy\\EinAutomation.Api\\EinAutomation.Api\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -69,6 +69,10 @@
             "HtmlAgilityPack": {
               "target": "Package",
               "version": "[1.12.1, )"
+            },
+            "Microsoft.ApplicationInsights.AspNetCore": {
+              "target": "Package",
+              "version": "[2.21.0, )"
             },
             "Microsoft.AspNetCore.Authentication.JwtBearer": {
               "target": "Package",

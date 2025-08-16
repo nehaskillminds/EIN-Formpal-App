@@ -121,6 +121,7 @@ public sealed class FormDataMapper : IFormDataMapper
                 FormationDate = GetStringValue(formData, "startDate"),
                 BusinessCategory = GetStringValue(formData, "principalActivity"),
                 BusinessDescription = GetStringValue(formData, "principalLineOfBusiness"),
+                FilingState = GetStringValue(formData, "filingState"),
                 BusinessAddress1 = GetStringValue(physicalAddress, "street"),
                 BusinessAddress2 = GetStringValue(physicalAddress, "street2"),
                 EntityState = GetStringValue(physicalAddress, "state"),
@@ -165,7 +166,13 @@ public sealed class FormDataMapper : IFormDataMapper
                 } : null,
                 LlcDetails = llcDetails.ContainsKey("numberOfMembers") && llcDetails["numberOfMembers"] != null 
                     ? new LlcDetails { NumberOfMembers = llcDetails["numberOfMembers"]?.ToString() } 
-                    : null
+                    : null,
+                TrustType = GetStringValue(formData, "trustType"),
+                
+                // New fields from updated payload
+                AccountId = GetStringValue(formData, "accountId"),
+                EntityId = GetStringValue(formData, "entityId"),
+                CaseId = GetStringValue(formData, "caseId")
             };
         }
         catch (Exception ex)

@@ -28,6 +28,7 @@ namespace EinAutomation.Api.Services
         protected string? DriverLogPath { get; } = Path.Combine(Path.GetTempPath(), "chromedriver.log");
         protected List<Dictionary<string, object?>> ConsoleLogs { get; } = new List<Dictionary<string, object?>>();
         protected bool ConfirmationUploaded { get; set; } = false;
+        protected string? _downloadDirectory;
 
         public EinFormFiller(
             ILogger<EinFormFiller> logger,
@@ -203,6 +204,15 @@ namespace EinAutomation.Api.Services
             try
             {
                 CaptureBrowserLogs();
+                
+                // DEBUG MODE: Keep browser open for debugging
+                var keepBrowserOpen = Environment.GetEnvironmentVariable("KEEP_BROWSER_OPEN") == "true";
+                if (keepBrowserOpen)
+                {
+                    _logger.LogInformation("🔍 DEBUG MODE: Browser kept open for debugging (KEEP_BROWSER_OPEN=true)");
+                    return;
+                }
+                
                 if (Driver != null)
                 {
                     Driver.Quit();
@@ -295,19 +305,7 @@ namespace EinAutomation.Api.Services
                 {
                     try
                     {
-                        var printOptions = new Dictionary<string, object>
-                        {
-                            {"landscape", false},
-                            {"displayHeaderFooter", false},
-                            {"printBackground", true},
-                            {"preferCSSPageSize", true},
-                            {"paperWidth", 8.27},
-                            {"paperHeight", 11.69},
-                            {"marginTop", 0.39},
-                            {"marginBottom", 0.39},
-                            {"marginLeft", 0.39},
-                            {"marginRight", 0.39}
-                        };
+                        var printOptions = new Dictionary<string, object>();
 
                         var result = chromeDriver.ExecuteCdpCommand("Page.printToPDF", printOptions);
 
@@ -345,7 +343,10 @@ namespace EinAutomation.Api.Services
                     bool notified = await _salesforceClient.NotifyScreenshotUploadToSalesforceAsync(
                         data?.RecordId,
                         blobUrl,
-                        data?.EntityName
+                        data?.EntityName,
+                        data?.AccountId,
+                        data?.EntityId,
+                        data?.CaseId
                     );
 
                     if (!notified)
@@ -375,6 +376,16 @@ namespace EinAutomation.Api.Services
                     return (null, false);
                 }
 
+                // AKS-specific logging
+                var isContainer = Environment.GetEnvironmentVariable("CONTAINER_ENV") == "true" || 
+                                 Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" ||
+                                 File.Exists("/.dockerenv");
+                
+                if (isContainer)
+                {
+                    _logger.LogInformation("Capturing success PDF in AKS container environment");
+                }
+
                 // Generate a clean filename
                 var cleanName = Regex.Replace(data?.EntityName ?? "UnknownEntity", @"[^\w\-]", "").Replace(" ", "");
                 var blobName = $"EntityProcess/{data?.RecordId ?? "unknown"}/{cleanName}-ID-EINLetter.pdf";
@@ -389,19 +400,7 @@ namespace EinAutomation.Api.Services
                 {
                     try
                     {
-                        var printOptions = new Dictionary<string, object>
-                        {
-                            {"landscape", false},
-                            {"displayHeaderFooter", false},
-                            {"printBackground", true},
-                            {"preferCSSPageSize", true},
-                            {"paperWidth", 8.27},
-                            {"paperHeight", 11.69},
-                            {"marginTop", 0.39},
-                            {"marginBottom", 0.39},
-                            {"marginLeft", 0.39},
-                            {"marginRight", 0.39}
-                        };
+                        var printOptions = new Dictionary<string, object>();
 
                         var result = chromeDriver.ExecuteCdpCommand("Page.printToPDF", printOptions);
 
@@ -411,7 +410,13 @@ namespace EinAutomation.Api.Services
                             if (!string.IsNullOrEmpty(pdfData))
                             {
                                 var pdfBytes = Convert.FromBase64String(pdfData);
-                                blobUrl = await _blobStorageService.UploadFinalBytesToBlob(pdfBytes, blobName, "application/pdf");
+                                blobUrl = await _blobStorageService.UploadEinLetterPdf(
+                                    pdfBytes, 
+                                    blobName, 
+                                    "application/pdf", 
+                                    data?.AccountId, 
+                                    data?.EntityId, 
+                                    data?.CaseId);
                                 _logger.LogInformation($"Success PDF successfully uploaded to: {blobUrl}");
                             }
                         }
@@ -439,7 +444,10 @@ namespace EinAutomation.Api.Services
                     bool notified = await _salesforceClient.NotifyEinLetterToSalesforceAsync(
                         data?.RecordId,
                         blobUrl,
-                        data?.EntityName
+                        data?.EntityName,
+                        data?.AccountId,
+                        data?.EntityId,
+                        data?.CaseId
                     );
 
                     if (!notified)
@@ -483,19 +491,7 @@ namespace EinAutomation.Api.Services
                 {
                     try
                     {
-                        var printOptions = new Dictionary<string, object>
-                        {
-                            {"landscape", false},
-                            {"displayHeaderFooter", false},
-                            {"printBackground", true},
-                            {"preferCSSPageSize", true},
-                            {"paperWidth", 8.27},
-                            {"paperHeight", 11.69},
-                            {"marginTop", 0.39},
-                            {"marginBottom", 0.39},
-                            {"marginLeft", 0.39},
-                            {"marginRight", 0.39}
-                        };
+                        var printOptions = new Dictionary<string, object>();
 
                         var result = chromeDriver.ExecuteCdpCommand("Page.printToPDF", printOptions);
 
@@ -505,6 +501,7 @@ namespace EinAutomation.Api.Services
                             if (!string.IsNullOrEmpty(pdfData))
                             {
                                 var pdfBytes = Convert.FromBase64String(pdfData);
+                                await SaveConfirmationPdf(pdfBytes, $"{cleanName}-ID-EINSubmissionFailure.pdf", data, cancellationToken);
                                 blobUrl = await _blobStorageService.UploadBytesToBlob(pdfBytes, blobName, "application/pdf");
                                 _logger.LogInformation($"Failure PDF successfully uploaded to: {blobUrl}");
                             }
@@ -533,7 +530,10 @@ namespace EinAutomation.Api.Services
                     bool notified = await _salesforceClient.NotifyFailureScreenshotUploadToSalesforceAsync(
                         data?.RecordId,
                         blobUrl,
-                        data?.EntityName
+                        data?.EntityName,
+                        data?.AccountId,
+                        data?.EntityId,
+                        data?.CaseId
                     );
 
                     if (!notified)
@@ -794,7 +794,7 @@ namespace EinAutomation.Api.Services
 
             var stateClean = state.ToUpper().Trim();
             
-            var stateMapping = new Dictionary<string, string>
+            var stateMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 {"ALABAMA", "AL"}, {"ALASKA", "AK"}, {"ARIZONA", "AZ"}, {"ARKANSAS", "AR"}, 
                 {"CALIFORNIA", "CA"}, {"COLORADO", "CO"}, {"CONNECTICUT", "CT"}, {"DELAWARE", "DE"},
@@ -808,7 +808,7 @@ namespace EinAutomation.Api.Services
                 {"OREGON", "OR"}, {"PENNSYLVANIA", "PA"}, {"RHODE ISLAND", "RI"}, {"SOUTH CAROLINA", "SC"},
                 {"SOUTH DAKOTA", "SD"}, {"TENNESSEE", "TN"}, {"TEXAS", "TX"}, {"UTAH", "UT"},
                 {"VERMONT", "VT"}, {"VIRGINIA", "VA"}, {"WASHINGTON", "WA"}, {"WEST VIRGINIA", "WV"},
-                {"WISCONSIN", "WI"}, {"WYOMING", "WY"}, {"DISTRICT OF COLUMBIA", "DC"}
+                {"WISCONSIN", "WI"}, {"WYOMING", "WY"}, {"DISTRICT OF COLUMBIA", "DC"}, {"SONOMA", ""}
             };
 
             if (stateClean.Length == 2 && stateMapping.Values.Contains(stateClean))
@@ -906,7 +906,7 @@ namespace EinAutomation.Api.Services
 //         var chromeHome = "/tmp/chrome-home";
 //         Environment.SetEnvironmentVariable("HOME", chromeHome);
 //         Directory.CreateDirectory(chromeHome);
-//         var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}";
+//         var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 //         Directory.CreateDirectory(chromeUserData);
 //         var options = new ChromeOptions
 //         {
@@ -958,7 +958,6 @@ namespace EinAutomation.Api.Services
 //     }
 // }
 
-
 // ________________________________________________________________________LOCAL DRIVER_______________________________________________
         public void InitializeDriver()
             {
@@ -976,28 +975,37 @@ namespace EinAutomation.Api.Services
                     options.AddArgument("--disable-infobars");
                     options.AddArgument("--window-size=1920,1080");
                     options.AddArgument("--start-maximized");
+                    
+                 
+
         
 
                 
                     
                     // Set Chrome preferences
-                    var prefs = new Dictionary<string, object>
-                    {
-                        ["profile.default_content_setting_values.popups"] = 2,
-                        ["profile.default_content_setting_values.notifications"] = 2,
-                        ["profile.default_content_setting_values.geolocation"] = 2,
-                        ["credentials_enable_service"] = false,
-                        ["profile.password_manager_enabled"] = false,
-                        ["autofill.profile_enabled"] = false,
-                        ["autofill.credit_card_enabled"] = false,
-                        ["password_manager_enabled"] = false,
-                        ["profile.password_dismissed_save_prompt"] = true
+                var prefs = new Dictionary<string, object>
+                {
+                    ["profile.default_content_setting_values.popups"] = 2,
+                    ["profile.default_content_setting_values.notifications"] = 2,
+                    ["profile.default_content_setting_values.geolocation"] = 2,
+                    ["credentials_enable_service"] = false,
+                    ["profile.password_manager_enabled"] = false,
+                    ["autofill.profile_enabled"] = false,
+                    ["autofill.credit_card_enabled"] = false,
+                    ["password_manager_enabled"] = false,
+                    ["profile.password_dismissed_save_prompt"] = true,
+                    ["plugins.always_open_pdf_externally"] = true,
+                    ["download.prompt_for_download"] = false,
+                    ["download.directory_upgrade"] = true,
+                    ["safebrowsing.enabled"] = true,
+
+                        
                     };
                     options.AddUserProfilePreference("prefs", prefs);
                     
-                    // Option 1: Specify ChromeDriver path explicitly
-                        var service = ChromeDriverService.CreateDefaultService(@"C:\Users\skill\OneDrive\Desktop\EinAutomationLocal.Api\EinAutomation.Api\EinAutomation.Api");
-                        Driver = new ChromeDriver(service, options);
+                    // Use regular ChromeDriver with anti-detection options
+                    var service = ChromeDriverService.CreateDefaultService();
+                    Driver = new ChromeDriver(service, options);
                     
                     // Option 2: Or use default if ChromeDriver is in PATH
                     // Driver = new ChromeDriver(options);
@@ -1127,6 +1135,95 @@ private void LogChromeDriverDiagnostics()
             var response = await httpClient.GetAsync(blobUrl, ct);
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadAsByteArrayAsync(ct);
+        }
+
+        /// <summary>
+        /// Saves PDF with method identifier using the new tagging system for EIN Letter PDFs
+        /// </summary>
+        protected async Task SaveEinLetterPdfWithMethodIdentifier(byte[] pdfBytes, string methodName, CaseData? data, CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (data?.RecordId != null && _blobStorageService != null && !string.IsNullOrEmpty(data.EntityName))
+                {
+                    // Create the clean entity name exactly like in the original blob naming structure
+                    var cleanName = Regex.Replace(data.EntityName, @"[^\w\-]", "").Replace(" ", "");
+                    
+                    // Use the original blob naming structure: EntityProcess/{RecordId}/{cleanName}-ID-EINLetter.pdf
+                    // But append the method identifier at the end before .pdf
+                    var blobName = $"EntityProcess/{data.RecordId}/{cleanName}-ID-EINLetter-{methodName}.pdf";
+                    
+                    var blobUrl = await _blobStorageService.UploadEinLetterPdf(
+                        pdfBytes, 
+                        blobName, 
+                        "application/pdf", 
+                        data.AccountId, 
+                        data.EntityId, 
+                        data.CaseId, 
+                        cancellationToken);
+                        
+                    if (!string.IsNullOrEmpty(blobUrl))
+                    {
+                        _logger.LogInformation("💾 EIN LETTER PDF SAVED WITH METHOD ID: {MethodName} - {BlobName} - {BlobUrl}", methodName, blobName, blobUrl);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Failed to save EIN Letter PDF with method identifier for method: {MethodName}", methodName);
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("Skipping EIN Letter PDF save with method identifier - RecordId, BlobStorageService, or EntityName is null");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error saving EIN Letter PDF with method identifier for method {MethodName}: {Message}", methodName, ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Saves confirmation PDF with the new tagging system
+        /// </summary>
+        protected async Task SaveConfirmationPdf(byte[] pdfBytes, string fileName, CaseData? data, CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (data?.RecordId != null && _blobStorageService != null && !string.IsNullOrEmpty(data.EntityName))
+                {
+                    // Create the clean entity name
+                    var cleanName = Regex.Replace(data.EntityName, @"[^\w\-]", "").Replace(" ", "");
+                    
+                    // Use standard blob naming for confirmation PDFs
+                    var blobName = $"EntityProcess/{data.RecordId}/{fileName}";
+                    
+                    var blobUrl = await _blobStorageService.UploadConfirmationPdf(
+                        pdfBytes, 
+                        blobName, 
+                        "application/pdf", 
+                        data.AccountId, 
+                        data.EntityId, 
+                        data.CaseId, 
+                        cancellationToken);
+                        
+                    if (!string.IsNullOrEmpty(blobUrl))
+                    {
+                        _logger.LogInformation("💾 CONFIRMATION PDF SAVED: {FileName} - {BlobName} - {BlobUrl}", fileName, blobName, blobUrl);
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Failed to save confirmation PDF: {FileName}", fileName);
+                    }
+                }
+                else
+                {
+                    _logger.LogDebug("Skipping confirmation PDF save - RecordId, BlobStorageService, or EntityName is null");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error saving confirmation PDF {FileName}: {Message}", fileName, ex.Message);
+            }
         }
     }
 }

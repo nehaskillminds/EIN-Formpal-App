@@ -55,7 +55,7 @@ namespace EinAutomation.Api.Services
             {
                 await _salesforceClient.InitializeSalesforceAuthAsync();
                 var (automationSuccess, errorMessage, automationPdfUrl) = await _formFiller.RunAutomation(data, jsonData);
-                await _blobStorageService.SaveJsonDataSync(jsonData.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? new object()));
+                await _blobStorageService.UploadJsonData(jsonData.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? new object()), data);
 
                 if (!automationSuccess)
                 {
@@ -74,7 +74,7 @@ namespace EinAutomation.Api.Services
                     _logger.LogInformation("Final failure JSON before upload: {Json}", JsonSerializer.Serialize(jsonData));
                     var failureCleanName = System.Text.RegularExpressions.Regex.Replace(data.EntityName ?? "UnknownEntity", "[^\\w]", "");
                     var failureJsonBlobName = $"EntityProcess/{data.RecordId}/{failureCleanName}_data.json";
-                    await _blobStorageService.UploadJsonAsync(ConvertToNonNullableDictionary(jsonData), failureJsonBlobName, "application/json", ct);
+                    await _blobStorageService.UploadJsonData(ConvertToNonNullableDictionary(jsonData), data, ct);
                     return (false, jsonData["error_message"] as string ?? "Automation failed", automationPdfUrl);
                 }
 
@@ -94,7 +94,7 @@ namespace EinAutomation.Api.Services
                 // Save success JSON data
                 var successCleanName = System.Text.RegularExpressions.Regex.Replace(data.EntityName ?? "UnknownEntity", "[^\\w]", "");
                 var successJsonBlobName = $"EntityProcess/{data.RecordId}/{successCleanName}_data.json";
-                await _blobStorageService.UploadJsonAsync(ConvertToNonNullableDictionary(jsonData), successJsonBlobName, "application/json", ct);
+                await _blobStorageService.UploadJsonData(ConvertToNonNullableDictionary(jsonData), data, ct);
 
                 success = true;
                 pdfAzureUrl = automationPdfUrl;
@@ -110,13 +110,13 @@ namespace EinAutomation.Api.Services
                 jsonData["response_status"] = "fail";
                 var exceptionCleanName = System.Text.RegularExpressions.Regex.Replace(data.EntityName ?? "UnknownEntity", "[^\\w]", "");
                 var exceptionJsonBlobName = $"EntityProcess/{data.RecordId}/{exceptionCleanName}_data.json";
-                await _blobStorageService.UploadJsonAsync(ConvertToNonNullableDictionary(jsonData), exceptionJsonBlobName, "application/json", ct);
+                await _blobStorageService.UploadJsonData(ConvertToNonNullableDictionary(jsonData), data, ct);
                 try
                 {
                     var (failureBlobUrl, failureSuccess) = await _formFiller.CaptureFailurePageAsPdf(data, ct);
                     if (failureSuccess && !string.IsNullOrEmpty(data.RecordId))
                     {
-                        await _salesforceClient.NotifyFailureScreenshotUploadToSalesforceAsync(data.RecordId, failureBlobUrl, data.EntityName ?? "UnknownEntity");
+                        await _salesforceClient.NotifyFailureScreenshotUploadToSalesforceAsync(data.RecordId, failureBlobUrl, data.EntityName ?? "UnknownEntity", data.AccountId, data.EntityId, data.CaseId);
                         await _salesforceClient.NotifySalesforceErrorCodeAsync(data.RecordId, "500", "fail", null);
                     }
                 }
@@ -144,8 +144,10 @@ namespace EinAutomation.Api.Services
                 {
                     _logger.LogWarning(logEx, $"Failed to upload Chrome logs for record_id: {data.RecordId}");
                 }
-                // Cleanup
-                await _formFiller.CleanupAsync(ct);
+                
+                // BROWSER KEPT OPEN FOR DEBUGGING - Cleanup commented out
+                // await _formFiller.CleanupAsync(ct);
+                _logger.LogInformation($"Browser instance kept open for debugging - Record ID: {data.RecordId}");
             }
         }
 
@@ -193,7 +195,12 @@ namespace EinAutomation.Api.Services
             { "third_party_designee", data.ThirdPartyDesignee?.ToDictionary().ToDictionary(k => k.Key, v => v.Value?.ToString()) },
             { "llc_details", data.LlcDetails?.ToDictionary().ToDictionary(k => k.Key, v => v.Value?.ToString()) },
             { "missing_fields", missingFields.Any() ? missingFields : null },
-            { "response_status", null }
+            { "response_status", null },
+            
+            // New fields from updated payload
+            { "account_id", data.AccountId },
+            { "entity_id", data.EntityId },
+            { "case_id", data.CaseId }
         };
     }
 

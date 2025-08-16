@@ -56,6 +56,12 @@ namespace EinAutomation.Api.Services
                 var username = _configuration["Salesforce:Username"];
                 var password = _configuration["Salesforce:Password"];
 
+                // Log the client ID for debugging
+                _logger.LogInformation("Salesforce Client ID: {ClientId}", clientId ?? "NULL");
+                _logger.LogInformation("Salesforce Username: {Username}", username ?? "NULL");
+
+                _logger.LogInformation("Attempting to authenticate with Salesforce...");
+
                 if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret) || 
                     string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
                 {
@@ -77,6 +83,7 @@ namespace EinAutomation.Api.Services
                 _httpClient.DefaultRequestHeaders.Clear();
                 _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
+                _logger.LogInformation("Sending authentication request to Salesforce with Client ID: {ClientId}", clientId);
                 var response = await _httpClient.PostAsync("https://login.salesforce.com/services/oauth2/token", formContent);
 
                 if (response.IsSuccessStatusCode)
@@ -350,7 +357,7 @@ namespace EinAutomation.Api.Services
             }
         }
 
-        public async Task<bool> NotifyScreenshotUploadToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName)
+        public async Task<bool> NotifyScreenshotUploadToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName, string? accountId = null, string? entityId = null, string? caseId = null)
         {
             if (string.IsNullOrEmpty(entityProcessId) || string.IsNullOrEmpty(blobUrl) || string.IsNullOrEmpty(entityName))
             {
@@ -360,7 +367,8 @@ namespace EinAutomation.Api.Services
 
             try
             {
-                _logger.LogInformation("Notifying Salesforce of EINConfirmation upload for entity process ID: {EntityProcessId}", entityProcessId);
+                _logger.LogInformation("Notifying Salesforce of EINConfirmation upload for entity process ID: {EntityProcessId}, AccountId: {AccountId}, EntityId: {EntityId}, CaseId: {CaseId}", 
+                    entityProcessId, accountId, entityId, caseId);
 
                 if (!await EnsureAuthenticatedAsync())
                 {
@@ -380,9 +388,9 @@ namespace EinAutomation.Api.Services
                     Migration_ID__c = migrationId,
                     File_Name__c = fileName,
                     Parent_Name__c = "EntityProcess",
-                    Account_ID__c = "",
-                    Case_ID__c = "",
-                    Entity_ID__c = "",
+                    Account_ID__c = accountId ?? "",
+                    Case_ID__c = caseId ?? "",
+                    Entity_ID__c = entityId ?? "",
                     Order_ID__c = "",
                     RFI_ID__c = "",
                     Entity_Process_Id__c = entityProcessId,
@@ -439,7 +447,7 @@ namespace EinAutomation.Api.Services
             }
         }
 
-        public async Task<bool> NotifyEinLetterToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName)
+        public async Task<bool> NotifyEinLetterToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName, string? accountId = null, string? entityId = null, string? caseId = null)
         {
             if (string.IsNullOrEmpty(entityProcessId) || string.IsNullOrEmpty(blobUrl) || string.IsNullOrEmpty(entityName))
             {
@@ -449,7 +457,8 @@ namespace EinAutomation.Api.Services
 
             try
             {
-                _logger.LogInformation("Notifying Salesforce of EINLetter.pdf upload for entity process ID: {EntityProcessId}", entityProcessId);
+                _logger.LogInformation("Notifying Salesforce of EINLetter.pdf upload for entity process ID: {EntityProcessId}, AccountId: {AccountId}, EntityId: {EntityId}, CaseId: {CaseId}", 
+                    entityProcessId, accountId, entityId, caseId);
 
                 if (!await EnsureAuthenticatedAsync())
                 {
@@ -469,9 +478,9 @@ namespace EinAutomation.Api.Services
                     Migration_ID__c = migrationId,
                     File_Name__c = fileName,
                     Parent_Name__c = "EntityProcess",
-                    Account_ID__c = "",
-                    Case_ID__c = "",
-                    Entity_ID__c = "",
+                    Account_ID__c = accountId ?? "",
+                    Case_ID__c = caseId ?? "",
+                    Entity_ID__c = entityId ?? "",
                     Order_ID__c = "",
                     RFI_ID__c = "",
                     Entity_Process_Id__c = entityProcessId,
@@ -528,7 +537,7 @@ namespace EinAutomation.Api.Services
             }
         }
 
-        public async Task<bool> NotifyFailureScreenshotUploadToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName)
+        public async Task<bool> NotifyFailureScreenshotUploadToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName, string? accountId = null, string? entityId = null, string? caseId = null)
         {
             if (string.IsNullOrEmpty(entityProcessId) || string.IsNullOrEmpty(blobUrl) || string.IsNullOrEmpty(entityName))
             {
@@ -538,7 +547,8 @@ namespace EinAutomation.Api.Services
 
             try
             {
-                _logger.LogInformation("Notifying Salesforce of EINSubmissionFailure upload for entity process ID: {EntityProcessId}", entityProcessId);
+                _logger.LogInformation("Notifying Salesforce of EINSubmissionFailure upload for entity process ID: {EntityProcessId}, AccountId: {AccountId}, EntityId: {EntityId}, CaseId: {CaseId}", 
+                    entityProcessId, accountId, entityId, caseId);
 
                 if (!await EnsureAuthenticatedAsync())
                 {
@@ -558,9 +568,9 @@ namespace EinAutomation.Api.Services
                     Migration_ID__c = migrationId,
                     File_Name__c = fileName,
                     Parent_Name__c = "EntityProcess",
-                    Account_ID__c = "",
-                    Case_ID__c = "",
-                    Entity_ID__c = "",
+                    Account_ID__c = accountId ?? "",
+                    Case_ID__c = caseId ?? "",
+                    Entity_ID__c = entityId ?? "",
                     Order_ID__c = "",
                     RFI_ID__c = "",
                     Entity_Process_Id__c = entityProcessId,

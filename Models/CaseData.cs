@@ -14,6 +14,7 @@ public class CaseData
     public string? FormationDate { get; set; }
     public string? BusinessCategory { get; set; }
     public string? BusinessDescription { get; set; }
+    public string? FilingState { get; set; }
     public string? BusinessAddress1 { get; set; }
     public string? EntityState { get; set; }
     public string? BusinessAddress2 { get; set; }
@@ -38,4 +39,11 @@ public class CaseData
     public EmployeeDetails? EmployeeDetails { get; set; }
     public ThirdPartyDesignee? ThirdPartyDesignee { get; set; }
     public LlcDetails? LlcDetails { get; set; }
+    public string? TrustType { get; set; }
+    
+    // New fields from updated payload
+    public string? AccountId { get; set; }
+    public string? EntityId { get; set; }
+    public string? CaseId { get; set; }
+    
 }
