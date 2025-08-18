@@ -16,6 +16,9 @@ using System.Net;
 using System.Text;
 using System.Reflection;
 using OpenQA.Selenium.Interactions; // Optional, for Actions class
+using PuppeteerSharp;
+using System.Diagnostics;
+using System.Net.Http;
 
 namespace EinAutomation.Api.Services
 {
@@ -2055,14 +2058,25 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
         _logger.LogInformation("🔧 METHOD SET 1: Preparing page for PDF capture - removing navigation panels...");
         await PreparePageForFullCapture(cancellationToken);
         _logger.LogInformation("✅ METHOD SET 1: Page preparation complete");
-        // Create a unique download directory for container deployment
-        downloadDir = Path.Combine(Path.GetTempPath(), "ein_pdfs", DateTime.Now.Ticks.ToString());
+        // Create a dedicated download directory under HOME/Downloads for EIN PDFs
+        var homeDir = Environment.GetEnvironmentVariable("HOME");
+        if (string.IsNullOrWhiteSpace(homeDir))
+        {
+            // Fallback for non-Linux environments
+            homeDir = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrWhiteSpace(homeDir))
+            {
+                homeDir = Path.GetTempPath();
+            }
+        }
+        var baseDownloadsDir = Path.Combine(homeDir, "Downloads", "ein_pdfs");
+        Directory.CreateDirectory(baseDownloadsDir);
+        downloadDir = Path.Combine(baseDownloadsDir, DateTime.Now.Ticks.ToString());
         Directory.CreateDirectory(downloadDir);
         _logger.LogInformation("Created download directory: {DownloadDir}", downloadDir);
 
-        // Also get the user's Downloads folder for local development
-        downloadsFolder = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        downloadsFolder = Path.Combine(downloadsFolder, "Downloads");
+        // Also set the user's Downloads folder reference consistently
+        downloadsFolder = Path.Combine(homeDir, "Downloads");
         _logger.LogInformation("Monitoring Downloads folder: {DownloadsFolder}", downloadsFolder);
 
         // Configure Chrome download preferences dynamically
@@ -2632,344 +2646,8 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
         _logger.LogInformation("Waiting 15 seconds for all downloads to complete...");
         await Task.Delay(15000, cancellationToken);
         
-        // Method 1: Try window-based PDF capture FIRST (open PDF in new tab and extract content)
-        // This is prioritized because it ensures the PDF is actually opened and loaded before capture
-        // COMMENTED OUT - Only keeping Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
-        /*
-        _logger.LogInformation("=== METHOD 1: Window-based PDF capture ===");
-        try
-        {
-        var pdfBytes = await TryWindowBasedPdfCapture(pdfLinkElement, cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-            _logger.LogInformation("✅ METHOD 1 SUCCESS: Window-based capture - {FileSize} bytes", pdfBytes.Length);
-                // Save this PDF with proper blob naming
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method1_WindowBased", data, cancellationToken);
-                successfulMethods.Add("Method1_WindowBased");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-        }
-        else
-        {
-            _logger.LogWarning("❌ METHOD 1 FAILED: Window-based capture returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 1 EXCEPTION: Window-based capture failed - {Message}", ex.Message);
-        }
-        */
-
-        // Method 2: Try direct download as fallback
-        // COMMENTED OUT - Only keeping Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
-        /*
-        _logger.LogInformation("=== METHOD 2: Direct download ===");
-        try
-        {
-            var pdfBytes = await TryDirectDownload(pdfLinkElement, cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-            _logger.LogInformation("✅ METHOD 2 SUCCESS: Direct download - {FileSize} bytes", pdfBytes.Length);
-                // Save this PDF with proper blob naming
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method2_DirectDownload", data, cancellationToken);
-                successfulMethods.Add("Method2_DirectDownload");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-        }
-        else
-        {
-            _logger.LogWarning("❌ METHOD 2 FAILED: Direct download returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 2 EXCEPTION: Direct download failed - {Message}", ex.Message);
-        }
-        */
-
-        // Method 3: Try clicking the PDF link and capturing from current window
-        // COMMENTED OUT - Only keeping Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
-        /*
-        _logger.LogInformation("=== METHOD 3: Click and capture from current window ===");
-        try
-        {
-            var pdfBytes = await TryClickAndCaptureFromCurrentWindow(pdfLinkElement, cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-            _logger.LogInformation("✅ METHOD 3 SUCCESS: Click and capture - {FileSize} bytes", pdfBytes.Length);
-                // Save this PDF with proper blob naming
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method3_ClickCapture", data, cancellationToken);
-                successfulMethods.Add("Method3_ClickCapture");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-        }
-        else
-        {
-            _logger.LogWarning("❌ METHOD 3 FAILED: Click and capture returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 3 EXCEPTION: Click and capture failed - {Message}", ex.Message);
-        }
-        */
-
-        // Method 4: Try Chrome DevTools PDF capture
-        // COMMENTED OUT - Only keeping Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
-        /*
-        _logger.LogInformation("=== METHOD 4: Chrome DevTools PDF capture ===");
-        try
-        {
-            var pdfBytes = await TryChromeDevToolsPdfCapture(cancellationToken, data);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-            _logger.LogInformation("✅ METHOD 4 SUCCESS: Chrome DevTools capture - {FileSize} bytes", pdfBytes.Length);
-                // Save this PDF with proper blob naming
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method4_ChromeDevTools", data, cancellationToken);
-                successfulMethods.Add("Method4_ChromeDevTools");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-        }
-        else
-        {
-            _logger.LogWarning("❌ METHOD 4 FAILED: Chrome DevTools capture returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 4 EXCEPTION: Chrome DevTools capture failed - {Message}", ex.Message);
-        }
-        */
-
-        // Method 5: Try ultimate fallback PDF download
-        // COMMENTED OUT - Only keeping Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
-        /*
-        _logger.LogInformation("=== METHOD 5: Ultimate fallback PDF download ===");
-        try
-        {
-            var pdfBytes = await TryUltimateFallbackPdfDownload(cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-            _logger.LogInformation("✅ METHOD 5 SUCCESS: Ultimate fallback - {FileSize} bytes", pdfBytes.Length);
-                // Save this PDF with proper blob naming
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method5_UltimateFallback", data, cancellationToken);
-                successfulMethods.Add("Method5_UltimateFallback");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-        }
-        else
-        {
-            _logger.LogWarning("❌ METHOD 5 FAILED: Ultimate fallback returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 5 EXCEPTION: Ultimate fallback failed - {Message}", ex.Message);
-        }
-        */
-
-        // Method 6: Click the PDF link first, then add delay and try multiple capture methods
-        // COMMENTED OUT - Only keeping Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
-        /*
-        _logger.LogInformation("=== METHOD 6: Click PDF link with delay and multiple capture methods ===");
-        try
-        {
-        var clicked = await TryClickPdfLink(pdfLinkElement);
-            if (clicked)
-        {
-            _logger.LogInformation("✅ METHOD 6: Successfully clicked PDF link");
-        
-        // Add delay AFTER clicking the link to ensure PDF loads properly
-        _logger.LogInformation("Adding 10-second delay after clicking PDF link to ensure proper loading...");
-        await Task.Delay(10000, cancellationToken); // 10-second delay for PDF to load
-        
-        // Wait for PDF to be fully loaded by checking for PDF indicators
-        _logger.LogInformation("Waiting for PDF to be fully loaded...");
-        var maxWaitTime = 30000; // 30 seconds
-        var waitInterval = 2000; // 2 seconds
-        var totalWaited = 0;
-        
-        while (totalWaited < maxWaitTime && !cancellationToken.IsCancellationRequested)
-        {
-            var currentUrl = Driver?.Url ?? "";
-            var currentPageSource = Driver?.PageSource ?? "";
-            
-            // Check if we're on a PDF page
-            if (currentUrl.Contains(".pdf") || 
-                currentPageSource.Contains("PDF") || 
-                currentPageSource.Contains("application/pdf") ||
-                currentUrl.Contains("CP575"))
-            {
-                _logger.LogInformation("PDF appears to be loaded. Current URL: {Url}", currentUrl);
-                break;
-            }
-            
-            await Task.Delay(waitInterval, cancellationToken);
-            totalWaited += waitInterval;
-            _logger.LogDebug("Waited {TotalWaited}ms for PDF to load...", totalWaited);
-        }
-        
-        // Try multiple capture methods after clicking
-        _logger.LogInformation("Attempting to capture PDF after clicking link...");
-        
-        // Try Chrome DevTools capture after clicking
-        _logger.LogInformation("--- Method 6a: Chrome DevTools capture after clicking ---");
-                try
-                {
-                    var pdfBytes = await TryChromeDevToolsPdfCapture(cancellationToken, data);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-            _logger.LogInformation("✅ METHOD 6a SUCCESS: Chrome DevTools capture after clicking - {FileSize} bytes", pdfBytes.Length);
-                        await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method6a_ChromeDevToolsAfterClick", data, cancellationToken);
-                        successfulMethods.Add("Method6a_ChromeDevToolsAfterClick");
-                        if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-        }
-        else
-        {
-            _logger.LogWarning("❌ METHOD 6a FAILED: Chrome DevTools capture after clicking returned null or empty");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("❌ METHOD 6a EXCEPTION: Chrome DevTools capture after clicking failed - {Message}", ex.Message);
-        }
-        
-        // Try ultimate fallback after clicking
-        _logger.LogInformation("--- Method 6b: Ultimate fallback after clicking ---");
-                try
-                {
-                    var pdfBytes = await TryUltimateFallbackPdfDownload(cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-            _logger.LogInformation("✅ METHOD 6b SUCCESS: Ultimate fallback after clicking - {FileSize} bytes", pdfBytes.Length);
-                        await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method6b_UltimateFallbackAfterClick", data, cancellationToken);
-                        successfulMethods.Add("Method6b_UltimateFallbackAfterClick");
-                        if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-        }
-        else
-        {
-            _logger.LogWarning("❌ METHOD 6b FAILED: Ultimate fallback after clicking returned null or empty");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("❌ METHOD 6b EXCEPTION: Ultimate fallback after clicking failed - {Message}", ex.Message);
-                }
-            }
-            else
-            {
-                _logger.LogWarning("❌ METHOD 6 SETUP FAILED: Could not click PDF link");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 6 EXCEPTION: Click PDF link process failed - {Message}", ex.Message);
-        }
-        
-        // Try to capture from any new tabs that might have opened (Method 6c)
-        _logger.LogInformation("--- Method 6c: Checking for PDF in new tabs/windows ---");
-        try
-        {
-        var currentWindows = Driver?.WindowHandles.ToList() ?? new List<string>();
-            // Note: We can't compare with originalWindows here since it's not defined in this scope
-            // So we'll check all windows for PDF content
-        
-            foreach (var windowHandle in currentWindows)
-            {
-                try
-                {
-                    Driver?.SwitchTo().Window(windowHandle);
-                    await Task.Delay(3000, cancellationToken); // Wait for window to load
-                    
-                    var windowUrl = Driver?.Url ?? "";
-                    _logger.LogInformation("Checking window: {Url}", windowUrl);
-                    
-                    // Try to capture PDF from this window (Method 6c1)
-                    _logger.LogInformation("--- Method 6c1: Chrome DevTools capture from window ---");
-                    try
-                    {
-                        var pdfBytes = await TryChromeDevToolsPdfCapture(cancellationToken, data);
-                    if (pdfBytes != null && pdfBytes.Length > 0)
-                    {
-                            _logger.LogInformation("✅ METHOD 6c1 SUCCESS: Captured PDF from window - {FileSize} bytes", pdfBytes.Length);
-                            await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method6c1_WindowChromeDevTools", data, cancellationToken);
-                            successfulMethods.Add("Method6c1_WindowChromeDevTools");
-                            if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-                    }
-                    else
-                    {
-                            _logger.LogWarning("❌ METHOD 6c1 FAILED: Chrome DevTools capture from window returned null or empty");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning("❌ METHOD 6c1 EXCEPTION: Chrome DevTools capture from window failed - {Message}", ex.Message);
-                    }
-                    
-                    // Try ultimate fallback on this window (Method 6c2)
-                    _logger.LogInformation("--- Method 6c2: Ultimate fallback from window ---");
-                    try
-                    {
-                        var pdfBytes = await TryUltimateFallbackPdfDownload(cancellationToken);
-                    if (pdfBytes != null && pdfBytes.Length > 0)
-                    {
-                            _logger.LogInformation("✅ METHOD 6c2 SUCCESS: Ultimate fallback succeeded on window - {FileSize} bytes", pdfBytes.Length);
-                            await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method6c2_WindowUltimateFallback", data, cancellationToken);
-                            successfulMethods.Add("Method6c2_WindowUltimateFallback");
-                            if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-                    }
-                    else
-                    {
-                            _logger.LogWarning("❌ METHOD 6c2 FAILED: Ultimate fallback from window returned null or empty");
-                    }
-                }
-                    catch (Exception ex)
-                {
-                        _logger.LogWarning("❌ METHOD 6c2 EXCEPTION: Ultimate fallback from window failed - {Message}", ex.Message);
-                }
-            }
-                catch (Exception windowEx)
-            {
-                    _logger.LogDebug("Error checking window {Window}: {Message}", windowHandle, windowEx.Message);
-                }
-                }
-            }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 6c EXCEPTION: Window checking process failed - {Message}", ex.Message);
-        }
-        */
-
-        // Method 7: Wait for download to complete in both directories with increased timeout
-        // COMMENTED OUT - Only keeping Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
-        /*
-        _logger.LogInformation("=== METHOD 7: Wait for download to complete ===");
-        try
-        {
-        var downloadedFile = await WaitForDownloadCompleteMultiLocation(downloadDir, downloadsFolder, 120000, cancellationToken); // Increased timeout to 120 seconds
-        if (!string.IsNullOrEmpty(downloadedFile))
-        {
-            // Read and validate the downloaded PDF
-            var downloadedBytes = await File.ReadAllBytesAsync(downloadedFile, cancellationToken);
-            
-            if (IsValidPdf(downloadedBytes))
-            {
-                _logger.LogInformation("✅ METHOD 7 SUCCESS: Click-based download - {FilePath}, {FileSize} bytes", 
-                    downloadedFile, downloadedBytes.Length);
-                    await SaveEinLetterPdfWithMethodIdentifier(downloadedBytes, "Method7_ClickBasedDownload", data, cancellationToken);
-                    successfulMethods.Add("Method7_ClickBasedDownload");
-                    if (firstSuccessfulPdf == null) firstSuccessfulPdf = downloadedBytes;
-            }
-            else
-            {
-                _logger.LogWarning("❌ METHOD 7 FAILED: Downloaded file is not a valid PDF");
-            }
-        }
-        else
-        {
-            _logger.LogWarning("❌ METHOD 7 FAILED: No downloaded file found");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 7 EXCEPTION: Click-based download failed - {Message}", ex.Message);
-        }
-        */
+     
+        // METHOD 7: Removed (PuppeteerSharp-based download)
         
         // PRIMARY METHOD: Recent Downloads Scan (Method 10a moved to primary position)
         _logger.LogInformation("=== PRIMARY METHOD: Recent Downloads Scan ===");
@@ -3015,7 +2693,7 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
             {
                 _logger.LogInformation("✅ FALLBACK METHOD SUCCESS: Aggressive scan - {FileSize} bytes", scanResult.Bytes.Length);
                     
-                    // Save fallback method PDF with standard blob naming (no method identifier)
+                    // Save fallback method PDF with standard blob naming (no method identifier)F
                     await SavePrimaryEinLetterPdf(scanResult.Bytes, data, cancellationToken);
                     successfulMethods.Add("Fallback_AggressiveScan");
                     if (firstSuccessfulPdf == null) firstSuccessfulPdf = scanResult.Bytes;
@@ -3035,119 +2713,6 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
             _logger.LogInformation("⏭️ SKIPPING FALLBACK METHOD: Primary method already succeeded");
         }
 
-        // Method 9: Additional comprehensive methods
-        // COMMENTED OUT - Only keeping Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
-        /*
-        _logger.LogInformation("=== METHOD 9: Additional comprehensive browser capture methods ===");
-        
-        // Method 9a: Browser viewer capture
-        try
-        {
-            var pdfBytes = await TryCapturePdfFromBrowserViewer(cancellationToken);
-            if (pdfBytes != null && pdfBytes.Length > 0)
-            {
-                _logger.LogInformation("✅ METHOD 9a SUCCESS: Browser viewer capture - {FileSize} bytes", pdfBytes.Length);
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method9a_BrowserViewer", data, cancellationToken);
-                successfulMethods.Add("Method9a_BrowserViewer");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-            }
-            else
-            {
-                _logger.LogWarning("❌ METHOD 9a FAILED: Browser viewer capture returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 9a EXCEPTION: Browser viewer capture failed - {Message}", ex.Message);
-        }
-
-        // Method 9b: Direct openPDFNoticeWindow execution
-        try
-        {
-            var pdfBytes = await TryExecuteOpenPDFNoticeWindow(pdfLinkElement, cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-                _logger.LogInformation("✅ METHOD 9b SUCCESS: openPDFNoticeWindow execution - {FileSize} bytes", pdfBytes.Length);
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method9b_OpenPDFNoticeWindow", data, cancellationToken);
-                successfulMethods.Add("Method9b_OpenPDFNoticeWindow");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-            }
-            else
-            {
-                _logger.LogWarning("❌ METHOD 9b FAILED: openPDFNoticeWindow execution returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 9b EXCEPTION: openPDFNoticeWindow execution failed - {Message}", ex.Message);
-        }
-
-        // Method 9c: Direct PDF URL extraction
-        try
-        {
-            var pdfBytes = await TryDirectPdfUrlExtraction(cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-                _logger.LogInformation("✅ METHOD 9c SUCCESS: Direct PDF URL extraction - {FileSize} bytes", pdfBytes.Length);
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method9c_DirectUrlExtraction", data, cancellationToken);
-                successfulMethods.Add("Method9c_DirectUrlExtraction");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-            }
-            else
-            {
-                _logger.LogWarning("❌ METHOD 9c FAILED: Direct PDF URL extraction returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 9c EXCEPTION: Direct PDF URL extraction failed - {Message}", ex.Message);
-        }
-
-        // Method 9d: Open PDF tab capture
-        try
-        {
-            var pdfBytes = await TryCapturePdfFromOpenTab(cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-                _logger.LogInformation("✅ METHOD 9d SUCCESS: Open tab capture - {FileSize} bytes", pdfBytes.Length);
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method9d_OpenTabCapture", data, cancellationToken);
-                successfulMethods.Add("Method9d_OpenTabCapture");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-            }
-            else
-            {
-                _logger.LogWarning("❌ METHOD 9d FAILED: Open tab capture returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 9d EXCEPTION: Open tab capture failed - {Message}", ex.Message);
-        }
-
-        // Method 9e: Print PDF from opened window
-        try
-        {
-            var pdfBytes = await TryPrintPdfFromOpenedWindow(cancellationToken);
-        if (pdfBytes != null && pdfBytes.Length > 0)
-        {
-                _logger.LogInformation("✅ METHOD 9e SUCCESS: Print PDF from opened window - {FileSize} bytes", pdfBytes.Length);
-                await SaveEinLetterPdfWithMethodIdentifier(pdfBytes, "Method9e_PrintFromWindow", data, cancellationToken);
-                successfulMethods.Add("Method9e_PrintFromWindow");
-                if (firstSuccessfulPdf == null) firstSuccessfulPdf = pdfBytes;
-            }
-            else
-            {
-                _logger.LogWarning("❌ METHOD 9e FAILED: Print PDF from opened window returned null or empty");
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning("❌ METHOD 9e EXCEPTION: Print PDF from opened window failed - {Message}", ex.Message);
-        }
-        */
-
-        // NOTE: Method 10a (RecentDownloadsScan) moved to PRIMARY METHOD position above
-        // NOTE: Method 10b (Final aggressive scan) removed as it duplicates FALLBACK METHOD above
 
         // Summary of results
         _logger.LogInformation("📊 DOWNLOAD SUMMARY: {SuccessfulMethodsCount} methods succeeded: {SuccessfulMethods}", 
@@ -3659,11 +3224,13 @@ private async Task<byte[]?> TryTriggerDownloadFromPdfViewer(CancellationToken ca
         // Prepare page for optimal PDF extraction
         await PreparePageForFullCapture(cancellationToken);
         
+        byte[]? pdfBytes = null;
+        
         // Method 1: Enhanced Chrome DevTools capture from viewer
         if (Driver is ChromeDriver chromeDriver)
         {
             _logger.LogInformation("📱 Viewer Strategy 1: Enhanced DevTools capture");
-            var pdfBytes = await TryChromeDevToolsPdfCapture(cancellationToken, null);
+            pdfBytes = await TryChromeDevToolsPdfCapture(cancellationToken, null);
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 _logger.LogInformation("✅ Viewer Strategy 1 SUCCESS: {FileSize} bytes", pdfBytes.Length);
@@ -3757,6 +3324,8 @@ private async Task<byte[]?> TryTriggerDownloadFromPdfViewer(CancellationToken ca
             _logger.LogInformation("Successfully captured PDF from print dialog: {FileSize} bytes", pdfBytes.Length);
             return pdfBytes;
         }
+
+        // Method 5: Removed (PuppeteerSharp alternative)
     }
     catch (Exception ex)
     {
@@ -5004,6 +4573,7 @@ private async Task<byte[]?> TryExtractPdfContentFromViewerEnhanced(CancellationT
         _logger.LogInformation("🎯 Enhanced PDF content extraction from viewer");
         
         var jsExecutor = (IJavaScriptExecutor?)Driver;
+        byte[]? pdfBytes = null;
         
         // Enhanced PDF extraction script with multiple detection methods
         var extractScript = @"
@@ -5095,7 +4665,7 @@ private async Task<byte[]?> TryExtractPdfContentFromViewerEnhanced(CancellationT
                             {
                                 try
                                 {
-                                    var pdfBytes = Convert.FromBase64String(base64Data);
+                                    pdfBytes = Convert.FromBase64String(base64Data);
                                     if (IsValidPdf(pdfBytes))
                                     {
                                         _logger.LogInformation("✅ Enhanced extraction SUCCESS: Base64 PDF - {FileSize} bytes", pdfBytes.Length);
@@ -5114,7 +4684,7 @@ private async Task<byte[]?> TryExtractPdfContentFromViewerEnhanced(CancellationT
                             // Try to download from the URL
                             try
                             {
-                                var pdfBytes = await DownloadPdfFromUrl(pdfUrl, cancellationToken);
+                                pdfBytes = await DownloadPdfFromUrl(pdfUrl, cancellationToken);
                                 if (pdfBytes != null && pdfBytes.Length > 0 && IsValidPdf(pdfBytes))
                                 {
                                     _logger.LogInformation("✅ Enhanced extraction SUCCESS: URL download - {FileSize} bytes", pdfBytes.Length);
@@ -5137,6 +4707,8 @@ private async Task<byte[]?> TryExtractPdfContentFromViewerEnhanced(CancellationT
                     string.Join(", ", methods.Cast<object>().Select(m => m.ToString())));
             }
         }
+
+        // Method 6: Removed (PuppeteerSharp alternative)
     }
     catch (Exception ex)
     {
@@ -5156,6 +4728,7 @@ private async Task<byte[]?> TryUltimateFallbackPdfDownload(CancellationToken can
         await PreparePageForFullCapture(cancellationToken);
         
         var jsExecutor = (IJavaScriptExecutor?)Driver;
+        byte[]? pdfBytes = null;
         
         // Method 1: Extract all possible PDF URLs from the page
         var script = @"
@@ -5232,7 +4805,7 @@ private async Task<byte[]?> TryUltimateFallbackPdfDownload(CancellationToken can
                         {
                             _logger.LogInformation("Trying ultimate fallback URL: {Url}", pdfUrl);
                             
-                            var pdfBytes = await DownloadPdfFromUrl(pdfUrl, cancellationToken);
+                            pdfBytes = await DownloadPdfFromUrl(pdfUrl, cancellationToken);
                             if (pdfBytes != null && pdfBytes.Length > 0)
                             {
                                 _logger.LogInformation("Ultimate fallback succeeded with URL: {Url}, Size: {FileSize} bytes", 
@@ -5271,7 +4844,7 @@ private async Task<byte[]?> TryUltimateFallbackPdfDownload(CancellationToken can
                 {
                     _logger.LogInformation("Trying constructed URL pattern: {Pattern}", pattern);
                     
-                    var pdfBytes = await DownloadPdfFromUrl(pattern, cancellationToken);
+                    pdfBytes = await DownloadPdfFromUrl(pattern, cancellationToken);
                     if (pdfBytes != null && pdfBytes.Length > 0)
                     {
                         _logger.LogInformation("Ultimate fallback succeeded with constructed URL: {Url}, Size: {FileSize} bytes", 
@@ -5317,7 +4890,7 @@ private async Task<byte[]?> TryUltimateFallbackPdfDownload(CancellationToken can
                 
                 _logger.LogInformation("Trying PDF URL from page source with pattern '{Pattern}': {Url}", pattern, pdfUrl);
                 
-                var pdfBytes = await DownloadPdfFromUrl(pdfUrl, cancellationToken);
+                pdfBytes = await DownloadPdfFromUrl(pdfUrl, cancellationToken);
                 if (pdfBytes != null && pdfBytes.Length > 0)
                 {
                     _logger.LogInformation("Ultimate fallback succeeded with page source URL: {Url}, Size: {FileSize} bytes", 
@@ -5334,7 +4907,7 @@ private async Task<byte[]?> TryUltimateFallbackPdfDownload(CancellationToken can
         {
             _logger.LogInformation("Found actual PDF URL: {Url}", dynamicPdfUrl);
             
-            var pdfBytes = await DownloadPdfFromUrl(dynamicPdfUrl, cancellationToken);
+            pdfBytes = await DownloadPdfFromUrl(dynamicPdfUrl, cancellationToken);
             if (pdfBytes != null && pdfBytes.Length > 0)
             {
                 _logger.LogInformation("Ultimate fallback succeeded with actual PDF URL: {Url}, Size: {FileSize} bytes", 
@@ -5342,6 +4915,8 @@ private async Task<byte[]?> TryUltimateFallbackPdfDownload(CancellationToken can
                 return pdfBytes;
             }
         }
+
+        // Method 5: Removed (PuppeteerSharp ultimate fallback)
     }
     catch (Exception ex)
     {
@@ -7067,7 +6642,14 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
                     // Use the requested blob naming structure: EntityProcess/{RecordId}/{cleanName}-ID-EINLetter.pdf
                     var blobName = $"EntityProcess/{data?.RecordId ?? "unknown"}/{cleanName}-ID-EINLetter.pdf";
                     
-                    var blobUrl = await _blobStorageService.UploadBytesToBlob(pdfBytes, blobName, "application/pdf", cancellationToken);
+                    var blobUrl = await _blobStorageService.UploadEinLetterPdf(
+                        pdfBytes,
+                        blobName,
+                        "application/pdf",
+                        data?.AccountId,
+                        data?.EntityId,
+                        data?.CaseId,
+                        cancellationToken);
                     if (!string.IsNullOrEmpty(blobUrl))
                     {
                         _logger.LogInformation("💾 PRIMARY EIN LETTER PDF SAVED: {BlobName} - {BlobUrl}", blobName, blobUrl);
@@ -7798,6 +7380,8 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
             // Check for PDF magic bytes
             return data[0] == 0x25 && data[1] == 0x50 && data[2] == 0x44 && data[3] == 0x46; // %PDF
         }
+
+        
 
         /// <summary>
         /// Safely gets a truncated version of the page source for logging purposes

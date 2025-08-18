@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "7XqtzVA+Iz8=",
+  "dgSpecHash": "ni6XTeIgDD4=",
   "success": true,
   "projectFilePath": "C:\\Users\\skill\\OneDrive\\Desktop\\EinAutomationLocal.Api - Copy (1)\\EinAutomationLocal.Api - Copy\\EinAutomationLocal.Api - Copy\\EinAutomation.Api\\EinAutomation.Api\\EinAutomation.Api.csproj",
   "expectedPackageFiles": [
@@ -82,6 +82,7 @@
     "C:\\Users\\skill\\.nuget\\packages\\polly\\8.6.1\\polly.8.6.1.nupkg.sha512",
     "C:\\Users\\skill\\.nuget\\packages\\polly.contrib.waitandretry\\1.1.1\\polly.contrib.waitandretry.1.1.1.nupkg.sha512",
     "C:\\Users\\skill\\.nuget\\packages\\polly.core\\8.6.1\\polly.core.8.6.1.nupkg.sha512",
+    "C:\\Users\\skill\\.nuget\\packages\\puppeteersharp\\13.0.2\\puppeteersharp.13.0.2.nupkg.sha512",
     "C:\\Users\\skill\\.nuget\\packages\\selenium.support\\4.20.0\\selenium.support.4.20.0.nupkg.sha512",
     "C:\\Users\\skill\\.nuget\\packages\\selenium.webdriver\\4.20.0\\selenium.webdriver.4.20.0.nupkg.sha512",
     "C:\\Users\\skill\\.nuget\\packages\\selenium.webdriver.chromedriver\\126.0.6478.5500\\selenium.webdriver.chromedriver.126.0.6478.5500.nupkg.sha512",

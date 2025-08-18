@@ -94,6 +94,10 @@
               "target": "Package",
               "version": "[1.1.1, )"
             },
+            "PuppeteerSharp": {
+              "target": "Package",
+              "version": "[13.0.2, )"
+            },
             "Selenium.Support": {
               "target": "Package",
               "version": "[4.20.0, )"

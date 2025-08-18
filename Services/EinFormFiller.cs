@@ -897,84 +897,93 @@ namespace EinAutomation.Api.Services
             };
         }
 
-// public void InitializeDriver()
-// {
-//     try
-//     {
-//         LogSystemResources();
-//         // Ensure HOME variable and Chrome data directories
-//         var chromeHome = "/tmp/chrome-home";
-//         Environment.SetEnvironmentVariable("HOME", chromeHome);
-//         Directory.CreateDirectory(chromeHome);
-//         var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-//         Directory.CreateDirectory(chromeUserData);
-//         var options = new ChromeOptions
-//         {
-//             BinaryLocation = "/usr/bin/chromium",
-//             AcceptInsecureCertificates = true
-//         };
-//         // Chromium runtime arguments
-//         options.AddArgument($"--user-data-dir={chromeUserData}");
-//         options.AddArgument("--headless=new");
-//         options.AddArgument("--no-sandbox");
-//         options.AddArgument("--disable-setuid-sandbox");
-//         options.AddArgument("--disable-dev-shm-usage");
-//         options.AddArgument("--disable-gpu");
-//         options.AddArgument("--disable-software-rasterizer");
-//         options.AddArgument("--disable-infobars");
-//         options.AddArgument("--disable-blink-features=AutomationControlled");
-//         options.AddArgument("--disable-extensions");
-//         options.AddArgument("--no-first-run");
-//         options.AddArgument("--no-default-browser-check");
-//         options.AddArgument("--disable-background-networking");
-//         options.AddArgument("--disable-sync");
-//         options.AddArgument("--disable-default-apps");
-//         options.AddArgument("--disable-translate");
-//         options.AddArgument("--window-size=1920,1080");
-//         options.AddArgument("--remote-debugging-port=9222");
-//         options.AddArgument("--remote-debugging-address=0.0.0.0");
-//         options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-//         // ChromeDriver service configuration
-//         var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName("/usr/bin/"), "chromedriver");
-//         driverService.LogPath = "/tmp/chromedriver.log"; // Force a known path
-//         driverService.EnableVerboseLogging = true;
-//         driverService.SuppressInitialDiagnosticInformation = false;
-//         Driver = new ChromeDriver(driverService, options);
-//         Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
-//         // Disable JS popups
-//         ((IJavaScriptExecutor)Driver).ExecuteScript(@"
-//             window.alert = function() { return true; };
-//             window.confirm = function() { return true; };
-//             window.prompt = function() { return null; };
-//             window.open = function() { return null; };
-//         ");
-//         _logger.LogInformation("WebDriver initialized successfully with Chromium");
-//     }
-//     catch (Exception ex)
-//     {
-//         _logger.LogError(ex, "Failed to initialize WebDriver");
-//         LogChromeDriverDiagnostics();
-//         throw;
-//     }
-// }
+public void InitializeDriver()
+{
+    try
+    {
+        LogSystemResources();
+        // Ensure HOME variable and Chrome data directories
+        var chromeHome = "/tmp/chrome-home";
+        Environment.SetEnvironmentVariable("HOME", chromeHome);
+        Directory.CreateDirectory(chromeHome);
+        var chromeDownloads = "/tmp/chrome-home/Downloads";
+        Directory.CreateDirectory(chromeDownloads);
+        var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        Directory.CreateDirectory(chromeUserData);
+        var options = new ChromeOptions
+        {
+            BinaryLocation = "/usr/bin/chromium",
+            AcceptInsecureCertificates = true
+        };
+        // Chromium runtime arguments
+        options.AddArgument($"--user-data-dir={chromeUserData}");
+        options.AddArgument("--headless=new");
+        options.AddArgument("--no-sandbox");
+        options.AddArgument("--disable-setuid-sandbox");
+        options.AddArgument("--disable-dev-shm-usage");
+        options.AddArgument("--disable-gpu");
+        options.AddArgument("--disable-software-rasterizer");
+        options.AddArgument("--disable-infobars");
+        options.AddArgument("--disable-blink-features=AutomationControlled");
+        options.AddArgument("--disable-extensions");
+        options.AddArgument("--no-first-run");
+        options.AddArgument("--no-default-browser-check");
+        options.AddArgument("--disable-background-networking");
+        options.AddArgument("--disable-sync");
+        options.AddArgument("--disable-default-apps");
+        options.AddArgument("--disable-translate");
+        options.AddArgument("--window-size=1920,1080");
+        options.AddArgument("--remote-debugging-port=9222");
+        options.AddArgument("--remote-debugging-address=0.0.0.0");
+        options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+        // Route downloads into the dedicated HOME/Downloads directory
+        options.AddUserProfilePreference("download.default_directory", chromeDownloads);
+        options.AddUserProfilePreference("download.prompt_for_download", false);
+        options.AddUserProfilePreference("download.directory_upgrade", true);
+        options.AddUserProfilePreference("safebrowsing.enabled", true);
+        options.AddUserProfilePreference("plugins.always_open_pdf_externally", true);
+        options.AddUserProfilePreference("profile.default_content_setting_values.automatic_downloads", 1);
+        // ChromeDriver service configuration
+        var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName("/usr/bin/"), "chromedriver");
+        driverService.LogPath = "/tmp/chromedriver.log"; // Force a known path
+        driverService.EnableVerboseLogging = true;
+        driverService.SuppressInitialDiagnosticInformation = false;
+        Driver = new ChromeDriver(driverService, options);
+        Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
+        // Disable JS popups
+        ((IJavaScriptExecutor)Driver).ExecuteScript(@"
+            window.alert = function() { return true; };
+            window.confirm = function() { return true; };
+            window.prompt = function() { return null; };
+            window.open = function() { return null; };
+        ");
+        _logger.LogInformation("WebDriver initialized successfully with Chromium");
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Failed to initialize WebDriver");
+        LogChromeDriverDiagnostics();
+        throw;
+    }
+}
 
 // ________________________________________________________________________LOCAL DRIVER_______________________________________________
-        public void InitializeDriver()
-            {
-                try
-                {
-                    LogSystemResources(); // You need to implement this
+        // public void InitializeDriver()
+        //     {
+        //         try
+        //         {
+        //             LogSystemResources(); // You need to implement this
                     
-                    var options = new ChromeOptions();
-                    // Set Chrome arguments
-                    options.AddArgument("--disable-gpu");
-                    options.AddArgument("--enable-unsafe-swiftshader");
-                    options.AddArgument("--no-sandbox");
-                    options.AddArgument("--disable-dev-shm-usage");
-                    options.AddArgument("--disable-blink-features=AutomationControlled");
-                    options.AddArgument("--disable-infobars");
-                    options.AddArgument("--window-size=1920,1080");
-                    options.AddArgument("--start-maximized");
+        //             var options = new ChromeOptions();
+        //             // Set Chrome arguments
+        //             options.AddArgument("--disable-gpu");
+        //             options.AddArgument("--enable-unsafe-swiftshader");
+        //             options.AddArgument("--no-sandbox");
+        //             options.AddArgument("--disable-dev-shm-usage");
+        //             options.AddArgument("--disable-blink-features=AutomationControlled");
+        //             options.AddArgument("--disable-infobars");
+        //             options.AddArgument("--window-size=1920,1080");
+        //             options.AddArgument("--start-maximized");
                     
                  
 
@@ -982,53 +991,53 @@ namespace EinAutomation.Api.Services
 
                 
                     
-                    // Set Chrome preferences
-                var prefs = new Dictionary<string, object>
-                {
-                    ["profile.default_content_setting_values.popups"] = 2,
-                    ["profile.default_content_setting_values.notifications"] = 2,
-                    ["profile.default_content_setting_values.geolocation"] = 2,
-                    ["credentials_enable_service"] = false,
-                    ["profile.password_manager_enabled"] = false,
-                    ["autofill.profile_enabled"] = false,
-                    ["autofill.credit_card_enabled"] = false,
-                    ["password_manager_enabled"] = false,
-                    ["profile.password_dismissed_save_prompt"] = true,
-                    ["plugins.always_open_pdf_externally"] = true,
-                    ["download.prompt_for_download"] = false,
-                    ["download.directory_upgrade"] = true,
-                    ["safebrowsing.enabled"] = true,
+        //             // Set Chrome preferences
+        //         var prefs = new Dictionary<string, object>
+        //         {
+        //             ["profile.default_content_setting_values.popups"] = 2,
+        //             ["profile.default_content_setting_values.notifications"] = 2,
+        //             ["profile.default_content_setting_values.geolocation"] = 2,
+        //             ["credentials_enable_service"] = false,
+        //             ["profile.password_manager_enabled"] = false,
+        //             ["autofill.profile_enabled"] = false,
+        //             ["autofill.credit_card_enabled"] = false,
+        //             ["password_manager_enabled"] = false,
+        //             ["profile.password_dismissed_save_prompt"] = true,
+        //             ["plugins.always_open_pdf_externally"] = true,
+        //             ["download.prompt_for_download"] = false,
+        //             ["download.directory_upgrade"] = true,
+        //             ["safebrowsing.enabled"] = true,
 
                         
-                    };
-                    options.AddUserProfilePreference("prefs", prefs);
+        //             };
+        //             options.AddUserProfilePreference("prefs", prefs);
                     
-                    // Use regular ChromeDriver with anti-detection options
-                    var service = ChromeDriverService.CreateDefaultService();
-                    Driver = new ChromeDriver(service, options);
+        //             // Use regular ChromeDriver with anti-detection options
+        //             var service = ChromeDriverService.CreateDefaultService();
+        //             Driver = new ChromeDriver(service, options);
                     
-                    // Option 2: Or use default if ChromeDriver is in PATH
-                    // Driver = new ChromeDriver(options);
+        //             // Option 2: Or use default if ChromeDriver is in PATH
+        //             // Driver = new ChromeDriver(options);
                     
-                    Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
+        //             Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
                     
-                    // Override JS functions
-                    var js = (IJavaScriptExecutor)Driver;
-                    js.ExecuteScript(@"
-                        window.alert = function() { return true; };
-                        window.confirm = function() { return true; };
-                        window.prompt = function() { return null; };
-                        window.open = function() { return null; };
-                    ");
+        //             // Override JS functions
+        //             var js = (IJavaScriptExecutor)Driver;
+        //             js.ExecuteScript(@"
+        //                 window.alert = function() { return true; };
+        //                 window.confirm = function() { return true; };
+        //                 window.prompt = function() { return null; };
+        //                 window.open = function() { return null; };
+        //             ");
                     
-                    Console.WriteLine("- WebDriver initialized successfully");
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"Failed to initialize WebDriver: {ex.Message}");
-                    throw;
-                }
-            }
+        //             Console.WriteLine("- WebDriver initialized successfully");
+        //         }
+        //         catch (Exception ex)
+        //         {
+        //             Console.Error.WriteLine($"Failed to initialize WebDriver: {ex.Message}");
+        //             throw;
+        //         }
+        //     }
 
 private void LogChromeDriverDiagnostics()
 {

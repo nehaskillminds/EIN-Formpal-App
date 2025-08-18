@@ -1374,6 +1374,24 @@
           }
         }
       },
+      "PuppeteerSharp/13.0.2": {
+        "type": "package",
+        "dependencies": {
+          "Microsoft.Bcl.AsyncInterfaces": "1.1.0",
+          "Microsoft.Extensions.Logging": "2.0.2",
+          "Newtonsoft.Json": "13.0.1"
+        },
+        "compile": {
+          "lib/netstandard2.0/PuppeteerSharp.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/netstandard2.0/PuppeteerSharp.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "Selenium.Support/4.20.0": {
         "type": "package",
         "dependencies": {
@@ -3798,6 +3816,19 @@
         "polly.core.nuspec"
       ]
     },
+    "PuppeteerSharp/13.0.2": {
+      "sha512": "u0j2mHpZUQQvSTBn1beNKmaBz+aM4awEPH587SIe3VA+XenHcb8z+bQsXPDlcMWyaoQbVGsbVxoXGqwDWNnpww==",
+      "type": "package",
+      "path": "puppeteersharp/13.0.2",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/netstandard2.0/PuppeteerSharp.dll",
+        "lib/netstandard2.0/PuppeteerSharp.xml",
+        "puppeteersharp.13.0.2.nupkg.sha512",
+        "puppeteersharp.nuspec"
+      ]
+    },
     "Selenium.Support/4.20.0": {
       "sha512": "ANrmrsgGUIP53wHxBcAEAsAMpcGr1D7Dtb8wjftuqyxBl/GmX9tU9uN5WDmEVo4WQI32OWgc/KG1ugsOmlr96w==",
       "type": "package",
@@ -4603,6 +4634,7 @@
       "Microsoft.Identity.Web >= 2.20.0",
       "Polly >= 8.6.1",
       "Polly.Contrib.WaitAndRetry >= 1.1.1",
+      "PuppeteerSharp >= 13.0.2",
       "Selenium.Support >= 4.20.0",
       "Selenium.WebDriver >= 4.20.0",
       "Selenium.WebDriver.ChromeDriver >= 126.0.6478.5500",
@@ -4703,6 +4735,10 @@
           "Polly.Contrib.WaitAndRetry": {
             "target": "Package",
             "version": "[1.1.1, )"
+          },
+          "PuppeteerSharp": {
+            "target": "Package",
+            "version": "[13.0.2, )"
           },
           "Selenium.Support": {
             "target": "Package",
