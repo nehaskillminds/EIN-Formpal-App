@@ -57,13 +57,13 @@ namespace EinAutomation.Api.Services
 
         public static readonly Dictionary<string, string> RadioButtonMapping = new Dictionary<string, string>
         {
-            { "Sole Proprietor", "sole" },
-            { "Partnership", "partnerships" },
-            { "Corporations", "corporations" },
-            { "Limited Liability Company (LLC)", "limited" },
-            { "Estate", "estate" },
-            { "Trusts", "trusts" },
-            { "View Additional Types, Including Tax-Exempt and Governmental Organizations", "viewadditional" }
+            { "Sole Proprietor", "SOLE_PROPRIETORlegalStructureInputid" },
+            { "Partnership", "PARTNERSHIPlegalStructureInputid" },
+            { "Corporations", "CORPORATIONlegalStructureInputid" },
+            { "Limited Liability Company (LLC)", "LLClegalStructureInputid" },
+            { "Estate", "ESTATElegalStructureInputid" },
+            { "Trusts", "ALL_OTHERS_TRUSTlegalStructureInputid" },
+            { "View Additional Types, Including Tax-Exempt and Governmental Organizations", "OTHER_NON_PROFITlegalStructureInputid" }
         };
 
         public static readonly Dictionary<string, string> SubTypeMapping = new Dictionary<string, string>
@@ -97,16 +97,16 @@ namespace EinAutomation.Api.Services
 
         public static readonly Dictionary<string, string> SubTypeButtonMapping = new Dictionary<string, string>
         {
-            { "Sole Proprietor", "sole" },
+            { "Sole Proprietor", "SOLE_PROPRIETORsolePropStructureInputid" },
             { "Household Employer", "house" },
-            { "Partnership", "parnership" },
-            { "Joint Venture", "joint" },
-            { "Corporation", "corp" },
-            { "S Corporation", "scorp" },
-            { "Personal Service Corporation", "personalservice" },
-            { "Irrevocable Trust", "irrevocable" },
-            { "Revocable Trust", "revocable" },
-            { "Non-Profit/Tax-Exempt Organization", "othernonprofit" },
+            { "Partnership", "PARTNERSHIPpartnershipStructureInputid" },
+            { "Joint Venture", "JOINT_VENTUREpartnershipStructureInputid" },
+            { "Corporation", "CORPORATIONcorpStructureInputid" },
+            { "S Corporation", "SCORPcorpStructureInputid" },
+            { "Personal Service Corporation", "PERSONAL_SERVICE_CORPORATIONcorpStructureInputid" },
+            { "Irrevocable Trust", "IRREVOCABLE_TRUSTtrustEntityInputid" },
+            { "Revocable Trust", "REVOCABLE_TRUSTtrustEntityInputid" },
+            { "Non-Profit/Tax-Exempt Organization", "OTHER_NON_PROFITadditionalEntityInputid" },
             { "Other", "other_option" }
         };
 
@@ -122,6 +122,50 @@ namespace EinAutomation.Api.Services
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _errorMessageExtractionService = errorMessageExtractionService ?? throw new ArgumentNullException(nameof(errorMessageExtractionService));
+        }
+
+        // Method 7A: Use Chrome DevTools Protocol to print to PDF from an existing Puppeteer page
+        private async Task<byte[]?> TryPuppeteerSharpPrintToPdf(IPage page, CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting PuppeteerSharp CDP Page.printToPDF...");
+                var client = await page.Target.CreateCDPSessionAsync();
+                var printParams = new
+                {
+                    landscape = false,
+                    displayHeaderFooter = false,
+                    printBackground = true,
+                    scale = 1.0,
+                    paperWidth = 8.5,
+                    paperHeight = 11.0,
+                    marginTop = 0.4,
+                    marginBottom = 0.4,
+                    marginLeft = 0.4,
+                    marginRight = 0.4,
+                    pageRanges = "",
+                    ignoreInvalidPageRanges = false,
+                    headerTemplate = "",
+                    footerTemplate = "",
+                    preferCSSPageSize = true
+                };
+
+                var result = await client.SendAsync("Page.printToPDF", printParams);
+                var pdfData = result?[(object)"data"]?.ToString();
+                if (string.IsNullOrEmpty(pdfData))
+                {
+                    _logger.LogWarning("PuppeteerSharp CDP print returned empty data");
+                    return null;
+                }
+
+                var bytes = Convert.FromBase64String(pdfData);
+                return IsValidPdf(bytes) ? bytes : null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("PuppeteerSharp CDP print to PDF failed: {Message}", ex.Message);
+                return null;
+            }
         }
 
         private async Task<bool> DetectAndHandleType2Failure(CaseData? data, Dictionary<string, object?>? jsonData)
@@ -268,35 +312,24 @@ namespace EinAutomation.Api.Services
                 try
                 {
                     Driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(Timeout);
-                    WaitHelper.WaitUntilExists(Driver, By.XPath("//input[@type='submit' and @name='submit' and @value='Begin Application >>']"), 10);
-                    _logger.LogInformation("Page loaded successfully");
+
+                    var beginAppButton = Driver.FindElements(By.XPath("//a[@id='anchor-ui-0']")).FirstOrDefault();
+                    if (beginAppButton != null && beginAppButton.Displayed && beginAppButton.Enabled)
+                    {
+                        beginAppButton.Click();
+                        _logger.LogInformation("Clicked 'Begin Application Now' button successfully");
+                    }
+
+                    // Always scroll after the first attempt
+                    ScrollToBottom();
                 }
                 catch (WebDriverTimeoutException)
                 {
-                    CaptureBrowserLogs();
-                    var pageSource = GetTruncatedPageSource();
-                    _logger.LogError($"Page load timeout. Current URL: {Driver?.Url ?? "N/A"}, Page source: {pageSource}");
-                    throw new AutomationError("Page load timeout", "Failed to locate Begin Application button");
+                    _logger.LogDebug("Failed to click Begin Application Now button");
                 }
 
-                if (!ClickButton(By.XPath("//input[@type='submit' and @name='submit' and @value='Begin Application >>']"), "Begin Application"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to click Begin Application", "Button click unsuccessful after retries");
-                }
-
-                try
-                {
-                    Driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(Timeout);
-                    WaitHelper.WaitUntilExists(Driver, By.Id("individual-leftcontent"), 10);
-                    _logger.LogInformation("Main form content loaded");
-                }
-                catch (WebDriverTimeoutException)
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to load main form content", "Element 'individual-leftcontent' not found");
-                }
-
+                
+                ScrollToBottom();
                 var entityType = data.EntityType?.Trim() ?? string.Empty;
                 var mappedType = EntityTypeMapping.GetValueOrDefault(entityType, string.Empty);
                 var radioId = RadioButtonMapping.GetValueOrDefault(mappedType, string.Empty);
@@ -306,11 +339,8 @@ namespace EinAutomation.Api.Services
                     throw new AutomationError($"Failed to select entity type: {mappedType}", $"Radio ID: {radioId}");
                 }
 
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after entity type", "Continue button click unsuccessful");
-                }
+                ScrollToBottom();
+
 
                 if (!new[] { "Limited Liability Company (LLC)", "Estate" }.Contains(mappedType))
                 {
@@ -347,38 +377,21 @@ namespace EinAutomation.Api.Services
                         CaptureBrowserLogs();
                         throw new AutomationError($"Failed to select sub-type: {subType}", $"Radio ID: {subTypeRadioId}");
                     }
-                    if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue sub-type (first click)"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to continue after sub-type selection (first click)");
-                    }
-                    await Task.Delay(500);
-                    if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue sub-type (second click)"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to continue after sub-type selection (second click)");
-                    }
+                   
                 }
-                else
-                {
-                    if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after entity type"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to continue after entity type");
-                    }
-                }
-
-                if (mappedType == "Limited Liability Company (LLC)")
+               
+                int llcMembers = 1;
+                if (radioId == "LLClegalStructureInputid")
                 {
                     // --- numberOfMembers robust handling ---
-                    int llcMembers = 1;
+                    
                     var llcMembersRaw = data.LlcDetails?.NumberOfMembers;
                     llcMembers = ParseFlexibleInt(llcMembersRaw, 1);
                     if (llcMembers < 1) llcMembers = 1;
                     try
                     {
                         Driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(Timeout);
-                        var field = WaitHelper.WaitUntilExists(Driver, By.XPath("//input[@id='numbermem' or @name='numbermem']"), 10);
+                        var field = WaitHelper.WaitUntilExists(Driver, By.XPath("//input[@id='membersOfLlcInput' or @name='membersOfLlcInput']"), 10);
                         ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", field);
                         field.Clear();
                         await Task.Delay(200);
@@ -396,77 +409,45 @@ namespace EinAutomation.Api.Services
                         throw new AutomationError("Failed to fill LLC members", ex.Message);
                     }
                     var stateValue = NormalizeState(data.EntityState ?? data.EntityStateRecordState ?? string.Empty);
-                    if (!SelectDropdown(By.Id("state"), stateValue, "State"))
+                    if (!SelectDropdown(By.Id("stateInputControl"), stateValue, "State"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError($"Failed to select state: {stateValue}");
                     }
-                    if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to continue after LLC members and state");
-                    }
+                    ScrollToBottom();
                 }
 
                 var specificStates = new HashSet<string> { "AZ", "CA", "ID", "LA", "NV", "NM", "TX", "WA", "WI" };
 
-                if (mappedType == "Limited Liability Company (LLC)" &&
-                    specificStates.Contains(NormalizeState(data.EntityState ?? string.Empty)))
+                if (radioId == "LLClegalStructureInputid" &&
+                    specificStates.Contains(NormalizeState(data.EntityState ?? string.Empty)) &&
+                    llcMembers == 2)
                 {
-                    try
-                    {
-                        var wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(5));
-                        var radioElement = wait.Until(driver =>
+                    _logger.LogInformation("Entering non-partnership LLC branch: State={State}, Members={Members}", NormalizeState(data.EntityState ?? string.Empty), llcMembers);
+                    try{
+                        if (!SelectRadio("nomarriedInputControlid", "Non-partnership LLC option"))
                         {
-                            var elements = driver.FindElements(By.Id("radio_n"));
-                            return elements.Count > 0 ? elements[0] : null;
-                        });
-
-                        if (radioElement != null)
-                        {
-                            if (!SelectRadio("radio_n", "Non-partnership LLC option"))
-                            {
-                                CaptureBrowserLogs();
-                                throw new AutomationError("Failed to select non-partnership LLC option");
-                            }
-
-                            if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after radio_n"))
-                            {
-                                CaptureBrowserLogs();
-                                throw new AutomationError("Failed to continue after non-partnership LLC option");
-                            }
+                            CaptureBrowserLogs();
+                            throw new AutomationError("Failed to select non-partnership LLC option");
                         }
-                    }
-                    catch (WebDriverTimeoutException)
-                    {
-                        _logger.LogInformation("'radio_n' not found within 5 seconds. Skipping selection and continuing.");
+                        ScrollToBottom();
                     }
                     catch (Exception ex)
                     {
                         _logger.LogWarning($"Unexpected error while handling non-partnership LLC option: {ex.Message}");
                     }
 
-                    if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after confirmation"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to continue after confirmation");
-                    }
-                }
-                else
-                {
-                    if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after LLC"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to continue after LLC");
-                    }
                 }
 
-                if (!SelectRadio("newbiz", "New Business"))
+                ScrollToBottom();
+
+                if (!SelectRadio("NEW_BUSINESSreasonForApplyingInputControlid", "New Business", timeoutSeconds: 10))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to select new business");
                 }
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
+                
+                if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to continue after business purpose");
@@ -478,88 +459,42 @@ namespace EinAutomation.Api.Services
                 var lastName = data.EntityMembers?.GetValueOrDefault<string, string>("last_name_1", (string?)defaults["last_name"]!) ?? (string?)defaults["last_name"] ?? string.Empty;
                 var middleName = data.EntityMembers?.GetValueOrDefault<string, string>("middle_name_1", (string?)defaults["middle_name"]!) ?? (string?)defaults["middle_name"] ?? string.Empty;
 
-                if (new[] { "Sole Proprietorship", "Individual" }.Contains(data.EntityType ?? string.Empty))
-                {
-                    if (!FillField(By.Id("applicantFirstName"), firstName, "First Name (Applicant)"))
+                
+                
+                    if (!FillField(By.Id("responsibleFirstName"), firstName, "First Name"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError($"Failed to fill First Name: {firstName}");
                     }
-                    if (!string.IsNullOrEmpty(middleName) && !FillField(By.Id("applicantMiddleName"), middleName, "Middle Name (Applicant)"))
+                    if (!string.IsNullOrEmpty(middleName) && !FillField(By.Id("responsibleMiddleName"), middleName, "Middle Name"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError($"Failed to fill Middle Name: {middleName}");
                     }
-                    if (!FillField(By.Id("applicantLastName"), lastName, "Last Name (Applicant)"))
+                    if (!FillField(By.Id("responsibleLastName"), lastName, "Last Name"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError($"Failed to fill Last Name: {lastName}");
                     }
-                }
-                else
-                {
-                    if (!FillField(By.Id("responsiblePartyFirstName"), firstName, "First Name"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError($"Failed to fill First Name: {firstName}");
-                    }
-                    if (!string.IsNullOrEmpty(middleName) && !FillField(By.Id("responsiblePartyMiddleName"), middleName, "Middle Name"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError($"Failed to fill Middle Name: {middleName}");
-                    }
-                    if (!FillField(By.Id("responsiblePartyLastName"), lastName, "Last Name"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError($"Failed to fill Last Name: {lastName}");
-                    }
-                }
+                
 
                 var ssn = (string?)defaults["ssn_decrypted"] ?? string.Empty;
                 ssn = ssn.Replace("-", "");
-                if (new[] { "Sole Proprietorship", "Individual" }.Contains(data.EntityType ?? string.Empty))
-                {
-                    if (!FillField(By.Id("applicantSSN3"), ssn.Substring(0, 3), "SSN First 3 (Applicant)"))
+                
+                
+                    if (!FillField(By.Id("responsibleSsn"), ssn, "SSN"))
                     {
                         CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill SSN First 3");
+                        throw new AutomationError("Failed to fill SSN");
                     }
-                    if (!FillField(By.Id("applicantSSN2"), ssn.Substring(3, 2), "SSN Middle 2 (Applicant)"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill SSN Middle 2");
-                    }
-                    if (!FillField(By.Id("applicantSSN4"), ssn.Substring(5), "SSN Last 4 (Applicant)"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill SSN Last 4");
-                    }
-                }
-                else
-                {
-                    if (!FillField(By.Id("responsiblePartySSN3"), ssn.Substring(0, 3), "SSN First 3"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill SSN First 3");
-                    }
-                    if (!FillField(By.Id("responsiblePartySSN2"), ssn.Substring(3, 2), "SSN Middle 2"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill SSN Middle 2");
-                    }
-                    if (!FillField(By.Id("responsiblePartySSN4"), ssn.Substring(5), "SSN Last 4"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill SSN Last 4");
-                    }
-                }
+                
 
-                if (!SelectRadio("iamsole", "I Am Sole"))
+                if (!SelectRadio("yesentityRoleRadioInputid", "I Am Sole"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to select I Am Sole");
                 }
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
+                if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to continue after responsible party");
@@ -571,25 +506,25 @@ namespace EinAutomation.Api.Services
                 var address2 = CleanAddress(defaults["business_address_2"]?.ToString()?.Trim() ?? string.Empty);
                 var fullAddress = string.Join(" ", new[] { address1, address2 }.Where(s => !string.IsNullOrEmpty(s)));
 
-                if (!FillField(By.Id("physicalAddressStreet"), fullAddress, "Street"))
+                if (!FillField(By.Id("physicalStreet"), fullAddress, "Street"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Physical Street");
                 }
 
-                if (!FillField(By.Id("physicalAddressCity"), CleanAddress(defaults["city"]?.ToString()), "Physical City"))
+                if (!FillField(By.Id("physicalCity"), CleanAddress(defaults["city"]?.ToString()), "Physical City"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Physical City");
                 }
 
-                if (!SelectDropdown(By.Id("physicalAddressState"), NormalizeState(data.EntityState ?? string.Empty), "Physical State"))
+                if (!SelectDropdown(By.Id("physicalState"), NormalizeState(data.EntityState ?? string.Empty), "Physical State"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to select Physical State");
                 }
 
-                if (!FillField(By.Id("physicalAddressZipCode"), CleanAddress(defaults["zip_code"]?.ToString()), "Physical Zip"))
+                if (!FillField(By.Id("physicalZipCode"), CleanAddress(defaults["zip_code"]?.ToString()), "Physical Zip"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Physical Zip");
@@ -600,20 +535,10 @@ namespace EinAutomation.Api.Services
                 var phoneClean = Regex.Replace(phone, @"\D", "");
                 if (phoneClean.Length == 10)
                 {
-                    if (!FillField(By.Id("phoneFirst3"), phoneClean.Substring(0, 3), "Phone First 3"))
+                    if (!FillField(By.Id("thePhone"), phoneClean, "Phone Number"))
                     {
                         CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill Phone First 3");
-                    }
-                    if (!FillField(By.Id("phoneMiddle3"), phoneClean.Substring(3, 3), "Phone Middle 3"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill Phone Middle 3");
-                    }
-                    if (!FillField(By.Id("phoneLast4"), phoneClean.Substring(6), "Phone Last 4"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to fill Phone Last 4");
+                        throw new AutomationError("Failed to fill Phone Number");
                     }
                 }
 
@@ -623,7 +548,7 @@ namespace EinAutomation.Api.Services
                     try
                     {
                         Driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(Timeout);
-                        WaitHelper.WaitUntilExists(Driver, By.Id("physicalAddressCareofName"), 10);
+                        WaitHelper.WaitUntilExists(Driver, By.Id("inCareOfInput"), 10);
                         // Clean the care of name using the same regex rules as legal name
                         var careOfName = data.CareOfName?.Trim() ?? string.Empty;
                         var cleanedCareOfName = Regex.Replace(careOfName, @"[^a-zA-Z0-9\s\-&]", "");
@@ -631,7 +556,7 @@ namespace EinAutomation.Api.Services
                         _logger.LogInformation("Original care of name: {Original}", careOfName);
                         _logger.LogInformation("Cleaned care of name: {Cleaned}", cleanedCareOfName);
                         
-                        if (!FillField(By.Id("physicalAddressCareofName"), cleanedCareOfName, "Physical Care of Name"))
+                        if (!FillField(By.Id("inCareOfInput"), cleanedCareOfName, "Physical Care of Name"))
                         {
                             _logger.LogWarning("Failed to fill Physical Care of Name, proceeding");
                         }
@@ -661,7 +586,7 @@ namespace EinAutomation.Api.Services
 
                 if (shouldFillMailing)
                 {
-                    if (!SelectRadio("radioAnotherAddress_y", "Address option (Yes)"))
+                    if (!SelectRadio("yesotherAddressid", "Address option (Yes)"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError("Failed to select Address option (Yes)");
@@ -669,91 +594,68 @@ namespace EinAutomation.Api.Services
                 }
                 else
                 {
-                    if (!SelectRadio("radioAnotherAddress_n", "Address option (No)"))
+                    if (!SelectRadio("nootherAddressid", "Address option (No)"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError("Failed to select Address option (No)");
                     }
-                }
-
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after address option"))
+if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 {
                     CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after address option");
+                    throw new AutomationError("Failed to continue after responsible party");
                 }
 
-                try
-                {
-                    var shortWait = new WebDriverWait(Driver, TimeSpan.FromSeconds(20));
-                    var element = WaitHelper.WaitUntilClickable(Driver, By.XPath("//input[@type='submit' and @name='Submit' and @value='Accept As Entered']"), 20);
-                    ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", element);
-                    element.Click();
-                    _logger.LogInformation("Clicked Accept As Entered");
                 }
-                catch (WebDriverTimeoutException)
-                {
-                    _logger.LogInformation("Accept As Entered button not found within 20 seconds, proceeding.");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Unexpected error while clicking Accept As Entered: {ex.Message}");
-                }
+
+                
+
+              
 
                 if (shouldFillMailing)
                 {
-                    if (!FillField(By.Id("mailingAddressStreet"), CleanAddress(mailingStreet), "Mailing Street"))
+                    if (!FillField(By.Id("mailingStreet"), CleanAddress(mailingStreet), "Mailing Street"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError("Failed to fill Mailing Street");
                     }
-                    if (!FillField(By.Id("mailingAddressCity"), CleanAddress(mailingAddressDict.GetValueOrDefault("mailingCity", "")), "Mailing City"))
+                    if (!FillField(By.Id("mailingCity"), CleanAddress(mailingAddressDict.GetValueOrDefault("mailingCity", "")), "Mailing City"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError("Failed to fill Mailing City");
                     }
-                    if (!FillField(By.Id("mailingAddressState"), CleanAddress(mailingAddressDict.GetValueOrDefault("mailingState", "")), "Mailing State"))
+                    // Use dropdown for state selection
                     {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to select Mailing State");
+                        var stateValue = NormalizeState(mailingAddressDict.GetValueOrDefault("mailingState", "") ?? string.Empty);
+                        if (!SelectDropdown(By.Id("mailingState"), stateValue, "Mailing State"))
+                        {
+                            CaptureBrowserLogs();
+                            throw new AutomationError("Failed to select Mailing State");
+                        }
                     }
-                    if (!FillField(By.Id("mailingAddressPostalCode"), CleanAddress(mailingAddressDict.GetValueOrDefault("mailingZip", "")), "Zip"))
+                    if (!FillField(By.Id("mailingZipCode"), CleanAddress(mailingAddressDict.GetValueOrDefault("mailingZip", "")), "Zip"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError("Failed to fill Mailing Zip");
                     }
-                    if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after mailing address"))
-                    {
-                        CaptureBrowserLogs();
-                        throw new AutomationError("Failed to continue after mailing address");
-                    }
-                    try
-                    {
-                        var shortWait = new WebDriverWait(Driver, TimeSpan.FromSeconds(20));
-                        var element = WaitHelper.WaitUntilClickable(Driver, By.XPath("//input[@type='submit' and @name='Submit' and @value='Accept As Entered']"), 20);
-                        ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", element);
-                        element.Click();
-                        _logger.LogInformation("Clicked Accept As Entered");
-                    }
-                    catch (WebDriverTimeoutException)
-                    {
-                        _logger.LogInformation("Accept As Entered button not found within 20 seconds, proceeding.");
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning($"Unexpected error while clicking Accept As Entered: {ex.Message}");
-                    }
+                    if (!ClickButtonByAriaLabel("Continue", "Continue"))
+                {
+                    CaptureBrowserLogs();
+                    throw new AutomationError("Failed to continue after responsible party");
+                }
+
+                    
                 }
 
 
                 var suffixRulesByGroup = new Dictionary<string, string[]>
                 {
-                    {"sole", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
-                    {"partnerships", new[] {"Corp", "LLC", "PLLC", "LC", "Inc", "PA"}},
-                    {"corporations", new[] {"LLC", "PLLC", "LC"}},
-                    {"limited", new[] {"Corp", "Inc", "PA"}},
-                    {"trusts", new[] {"Corp", "LLC", "PLLC", "LC", "Inc", "PA"}},
-                    {"estate", new[] {"Corp", "LLC", "PLLC", "LC", "Inc", "PA"}},
-                    {"othernonprofit", new[] {"Corp", "Inc", "PA"}}
+                    {"SOLE_PROPRIETORlegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
+                    {"PARTNERSHIPlegalStructureInputid", new[] {"Corp", "LLC", "PLLC", "LC", "Inc", "PA"}},
+                    {"CORPORATIONlegalStructureInputid", new[] {"LLC", "PLLC", "LC"}},
+                    {"LLClegalStructureInputid", new[] {"Corp", "Inc", "PA"}},
+                    {"ALL_OTHERS_TRUSTlegalStructureInputid", new[] {"Corp", "LLC", "PLLC", "LC", "Inc", "PA"}},
+                    {"ESTATElegalStructureInputid", new[] {"Corp", "LLC", "PLLC", "LC", "Inc", "PA"}},
+                    {"OTHER_NON_PROFITlegalStructureInputid", new[] {"Corp", "Inc", "PA"}}
                 };
 
                 string? businessName;
@@ -791,16 +693,16 @@ namespace EinAutomation.Api.Services
                 try
                 {
                     var entityGroup = RadioButtonMapping.GetValueOrDefault(mappedType);
-                    if (entityGroup == "sole")
+                    if (entityGroup == "SOLE_PROPRIETORlegalStructureInputid")
                     {
-                        if (!FillField(By.Id("businessOperationalTradeName"), businessName, "Trade Name (Sole Prop/Individual)"))
+                        if (!FillField(By.Id("dbaNameInput"), businessName, "Trade Name (Sole Prop/Individual)"))
                         {
                             _logger.LogInformation("Failed to fill business name in trade name field");
                         }
                     }
                     else
                     {
-                        if (!FillField(By.Id("businessOperationalLegalName"), businessName, "Legal Business Name"))
+                        if (!FillField(By.Id("legalNameInput"), businessName, "Legal Business Name"))
                         {
                             _logger.LogInformation("Failed to fill business name in legal name field");
                         }
@@ -815,7 +717,7 @@ namespace EinAutomation.Api.Services
                     _logger.LogInformation($"Business name field not found: {ex.Message}");
                 }
 
-                if (!FillField(By.Id("businessOperationalCounty"), data.County ?? string.Empty, "County"))
+                if (!FillField(By.Id("countyInput"), data.County ?? string.Empty, "County"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill County");
@@ -823,7 +725,7 @@ namespace EinAutomation.Api.Services
 
                 try
                 {
-                    SelectDropdown(By.Id("businessOperationalState"), NormalizeState(data.EntityState ?? string.Empty), "Business Operational State");
+                    SelectDropdown(By.Id("stateInput"), NormalizeState(data.EntityState ?? string.Empty), "Business Operational State");
                 }
                 catch (WebDriverTimeoutException)
                 {
@@ -835,14 +737,32 @@ namespace EinAutomation.Api.Services
                 }
 
                 
+                // --- Articles Filed State selection based on entity type ---
                 var filingState = data.FilingState;
-                var entityTypesRequiringArticles = new[] { "C-Corporation", "S-Corporation", "Professional Corporation", "Corporation", "Limited Liability Company", "Professional Limited Liability Company", "Limited Liability Company (LLC)", "Professional Limited Liability Company (PLLC)", "LLC" };
-                if (entityTypesRequiringArticles.Contains(data.EntityType ?? string.Empty))
+                // var entityType = data.EntityType ?? string.Empty;
+                var corporationTypes = new[] { "C-Corporation", "S-Corporation", "Professional Corporation", "Corporation" };
+                var llcTypes = new[] { "Limited Liability Company", "Professional Limited Liability Company", "Limited Liability Company (LLC)", "Professional Limited Liability Company (PLLC)", "LLC" };
+
+                if (!string.IsNullOrWhiteSpace(entityType) && (!string.IsNullOrWhiteSpace(filingState)))
                 {
                     try
-                    {   _logger.LogInformation("Attempting to select Articles Filed State. FilingState value: '{FilingState}'", filingState);
-                        SelectDropdown(By.Id("articalsFiledState"), NormalizeState(data.FilingState ?? string.Empty), "Articles Filed State");
-                        _logger.LogInformation("Selected Articles Filed State");
+                    {
+                        if (corporationTypes.Contains(entityType))
+                        {
+                            _logger.LogInformation("Selecting Articles Filed State for corporation type '{EntityType}' using element 'StateFiledArticlesIncorporationInput'. FilingState: '{FilingState}'", entityType, filingState);
+                            SelectDropdown(By.Id("StateFiledArticlesIncorporationInput"), NormalizeState(filingState), "Articles Filed State (Incorporation)");
+                            _logger.LogInformation("Selected Articles Filed State (Incorporation)");
+                        }
+                        else if (llcTypes.Contains(entityType))
+                        {
+                            _logger.LogInformation("Selecting Articles Filed State for LLC type '{EntityType}' using element 'StateFiledArticlesOrganizationInput'. FilingState: '{FilingState}'", entityType, filingState);
+                            SelectDropdown(By.Id("StateFiledArticlesOrganizationInput"), NormalizeState(filingState), "Articles Filed State (Organization)");
+                            _logger.LogInformation("Selected Articles Filed State (Organization)");
+                        }
+                        else
+                        {
+                            _logger.LogInformation("Entity type '{EntityType}' does not require Articles Filed State selection.", entityType);
+                        }
                     }
                     catch (WebDriverTimeoutException)
                     {
@@ -867,13 +787,13 @@ namespace EinAutomation.Api.Services
 
                         var suffixesByGroup = new Dictionary<string, string[]>
                 {
-                    {"sole", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
-                    {"partnerships", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
-                    {"corporations", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
-                    {"limited", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
-                    {"trusts", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
-                    {"estate", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
-                    {"othernonprofit", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}}
+                    {"SOLE_PROPRIETORlegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
+                    {"PARTNERSHIPlegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
+                    {"CORPORATIONlegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
+                    {"LLClegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
+                    {"ALL_OTHERS_TRUSTlegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
+                    {"ESTATElegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}},
+                    {"OTHER_NON_PROFITlegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}}
                 };
 
                         string NormalizeName(string name, string group)
@@ -900,7 +820,7 @@ namespace EinAutomation.Api.Services
                         {
                             _logger.LogInformation($"Filling Trade Name since it differs from Entity Name: '{normalizedTrade}' != '{normalizedEntity}'");
 
-                            if (!FillField(By.Id("businessOperationalTradeName"), normalizedTrade, "Trade Name"))
+                            if (!FillField(By.Id("dbaNameInput"), normalizedTrade, "Trade Name"))
                             {
                                 CaptureBrowserLogs();
                                 throw new AutomationError("Failed to fill Trade Name");
@@ -920,12 +840,12 @@ namespace EinAutomation.Api.Services
 
                 // --- startDate robust handling ---
                 var (month, year) = ParseFlexibleDate(data?.FormationDate ?? string.Empty);
-                if (!SelectDropdown(By.Id("BUSINESS_OPERATIONAL_MONTH_ID"), month?.ToString(), "Formation Month"))
+                if (!SelectDropdown(By.Id("startDateMonthInput"), month?.ToString(), "Formation Month"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to select Formation Month");
                 }
-                if (!FillField(By.Id("BUSINESS_OPERATIONAL_YEAR_ID"), year.ToString(), "Formation Year"))
+                if (!FillField(By.Id("startDateYearInput"), year.ToString(), "Formation Year"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Formation Year");
@@ -967,10 +887,22 @@ namespace EinAutomation.Api.Services
                                 try
                                 {
                                     Driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(Timeout);
-                                    var dropdown = WaitHelper.WaitUntilClickable(Driver, By.Id("fiscalMonth"), 10);
-                                    new SelectElement(dropdown).SelectByText(normalizedMonth);
-                                    _logger.LogInformation($"Selected Fiscal Month: {normalizedMonth}");
-                                    break;
+                                    var ok = SelectDropdown(By.Id("ClosingMonthOfAccountingInput"), normalizedMonth, "Fiscal Closing Month");
+                                    if (!ok)
+                                    {
+                                        // Fallback: try Title Case text explicitly
+                                        var titleCase = System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(normalizedMonth.ToLowerInvariant());
+                                        ok = SelectDropdown(By.Id("ClosingMonthOfAccountingInput"), titleCase, "Fiscal Closing Month");
+                                    }
+                                    if (ok)
+                                    {
+                                        _logger.LogInformation($"Selected Fiscal Month: {normalizedMonth}");
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        throw new AutomationError("Failed to select Fiscal Month", $"Tried value/text: {normalizedMonth}");
+                                    }
                                 }
                                 catch (WebDriverTimeoutException)
                                 {
@@ -1024,13 +956,9 @@ namespace EinAutomation.Api.Services
                     }
                 }
 
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after formation date");
-                }
+                
 
-                var activityRadios = new[] { "radioTrucking_n", "radioInvolveGambling_n", "radioExciseTax_n", "radioSellTobacco_n", "radioHasEmployees_n" };
+                var activityRadios = new[] { "nohighwayVehiclesInputid", "nogamblingWagerInputid", "nofileForm720Inputid", "noatfInputid", "nohasEmployeesInputid" };
                 foreach (var radio in activityRadios)
                 {
                     if (!SelectRadio(radio, radio))
@@ -1039,45 +967,48 @@ namespace EinAutomation.Api.Services
                         throw new AutomationError($"Failed to select {radio}");
                     }
                 }
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
+                if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to continue after activity options");
                 }
 
-                if (!SelectRadio("other", "Other activity"))
+                ScrollToBottom();
+
+                if (!SelectRadio("OTHERentityBusinessCategoryInputid", "Other activity"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to select Other activity");
                 }
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
+
+                ScrollToBottom();
+                if (!SelectRadio("OTHERotherInputid", "Other activity"))
                 {
                     CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after primary activity");
+                    throw new AutomationError("Failed to select Other activity");
                 }
 
-                if (!SelectRadio("other", "Other service"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to select Other service");
-                }
+                
+
+                
                 // Clean the business description to remove special characters
                 var businessDescription = defaults["business_description"]?.ToString();
                 var cleanedBusinessDescription = CleanBusinessDescription(businessDescription);
-                
                 _logger.LogInformation("Original business description: {Original}", businessDescription);
                 _logger.LogInformation("Cleaned business description: {Cleaned}", cleanedBusinessDescription);
                 
-                if (!FillField(By.Id("pleasespecify"), cleanedBusinessDescription, "Business Description"))
+                if (!FillField(By.Id("otherActivityTextInput"), cleanedBusinessDescription, "Business Description"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Business Description");
                 }
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
+
+                if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 {
                     CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after specify service");
+                    throw new AutomationError("Failed to continue after activity options");
                 }
+                
 
                 if (!SelectRadio("receiveonline", "Receive Online"))
                 {
@@ -1085,7 +1016,7 @@ namespace EinAutomation.Api.Services
                     throw new AutomationError("Failed to select Receive Online");
                 }
 
-                if (ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after receive EIN"))
+                if (ClickButtonByAriaLabel("hkgkgkgkg", "Continue after receive EIN"))
                 {
                     CaptureBrowserLogs();
 
@@ -1272,7 +1203,7 @@ namespace EinAutomation.Api.Services
                     throw new AutomationError("Failed to select Trusteeship entity type");
                 }
 
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after entity type"))
+                if (!ClickButtonByAriaLabel("Continue", "Continue after entity type"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to continue after entity type");
@@ -1313,13 +1244,13 @@ namespace EinAutomation.Api.Services
                     throw new AutomationError("Failed to select Trusteeship sub-type");
                 }
 
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after sub-type"))
+                if (!ClickButtonByAriaLabel("Continue", "Continue after sub-type"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to continue after sub-type");
                 }
                 CaptureBrowserLogs();
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after sub-type"))
+                if (!ClickButtonByAriaLabel("Continue", "Continue after sub-type"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to continue after sub-type");
@@ -1552,7 +1483,7 @@ namespace EinAutomation.Api.Services
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to select radioHasEmployees_n");
                 }
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue"))
+                if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to continue after activity options");
@@ -1565,7 +1496,7 @@ namespace EinAutomation.Api.Services
                     throw new AutomationError("Failed to select Receive Online");
                 }
 
-                if (ClickButton(By.XPath("//input[@type='submit' and @value='Continue >>']"), "Continue after receive EIN"))
+                if (ClickButtonByAriaLabel("Continue", "Continue after receive EIN"))
                 {
                     CaptureBrowserLogs();
 
@@ -1699,14 +1630,14 @@ namespace EinAutomation.Api.Services
                 // _______________________________________________final submit deployment ________________________________
 
                 // // 5. Continue to EIN Letter
-                if (!ClickButton(By.XPath("//input[@type='submit' and @value='Submit']"), 
-                        "Final Continue before EIN download"))
-                    {
-                        throw new Exception("Failed to click final Continue button before EIN");
-                    }
+                // if (!ClickButton(By.XPath("//input[@type='submit' and @value='Submit']"), 
+                //         "Final Continue before EIN download"))
+                //     {
+                //         throw new Exception("Failed to click final Continue button before EIN");
+                //     }
 
 
-                (einNumber, pdfAzureUrl, success) = await FinalSubmit(data, jsonData, CancellationToken.None);
+                // (einNumber, pdfAzureUrl, success) = await FinalSubmit(data, jsonData, CancellationToken.None);
                 
 
                  // Type "yes" to click final submit button____________________________local testing_____________________
@@ -1805,7 +1736,6 @@ namespace EinAutomation.Api.Services
                 _logger.LogInformation($"Browser instance kept open for debugging - Record ID: {data?.RecordId ?? "unknown"}");
             }
         }
-
 private async Task<(string? EinNumber, string? PdfAzureUrl, bool Success)> FinalSubmit(CaseData? data, Dictionary<string, object>? jsonData, CancellationToken cancellationToken)
 {
     string? einNumber = null;
@@ -2602,7 +2532,6 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
         {
             _logger.LogWarning("❌ DOWNLOAD TRIGGER 10 EXCEPTION: {Message}", ex.Message);
         }
-        
         // Download Trigger 11: PDF download via form submission
         _logger.LogInformation("=== DOWNLOAD TRIGGER 11: Form submission triggers ===");
         try
@@ -3325,7 +3254,14 @@ private async Task<byte[]?> TryTriggerDownloadFromPdfViewer(CancellationToken ca
             return pdfBytes;
         }
 
-        // Method 5: Removed (PuppeteerSharp alternative)
+        // Method 5: Try PuppeteerSharp as alternative to Selenium
+        _logger.LogInformation("🎭 Viewer Strategy 5: PuppeteerSharp PDF capture");
+        pdfBytes = await TryPuppeteerSharpPdfDownload(cancellationToken);
+        if (pdfBytes != null && pdfBytes.Length > 0)
+        {
+            _logger.LogInformation("✅ Viewer Strategy 5 SUCCESS: PuppeteerSharp capture - {FileSize} bytes", pdfBytes.Length);
+            return pdfBytes;
+        }
     }
     catch (Exception ex)
     {
@@ -3333,7 +3269,6 @@ private async Task<byte[]?> TryTriggerDownloadFromPdfViewer(CancellationToken ca
     }
     return null;
 }
-
 private async Task<byte[]?> TryExtractPdfContentFromViewer(CancellationToken cancellationToken)
 {
     try
@@ -4075,7 +4010,6 @@ private async Task<byte[]?> TryChromeDevToolsPdfCapture(CancellationToken cancel
     }
     return null;
 }
-
 private async Task PreparePageForFullCapture(CancellationToken cancellationToken)
 {
     try
@@ -4717,7 +4651,6 @@ private async Task<byte[]?> TryExtractPdfContentFromViewerEnhanced(CancellationT
     
     return null;
 }
-
 private async Task<byte[]?> TryUltimateFallbackPdfDownload(CancellationToken cancellationToken)
 {
     try
@@ -5389,7 +5322,6 @@ private static bool IsValidPdf(byte[] content)
         return false;
     }
 }
-
         /// <summary>
         /// Check if filename matches the exact EIN Letter PDF pattern: CP575Notice_[numbers]
         /// </summary>
@@ -6059,7 +5991,6 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
 
     return null;
 }
-
         // Helper to robustly parse date from string or DateTime
         private static (int? month, int? year) ParseFlexibleDate(object? dateObj)
         {
@@ -6795,6 +6726,40 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
                     _logger.LogWarning("❌ ENHANCED METHOD 1 FAILED: Chrome DevTools capture returned null or empty");
         }
 
+                // Method Enhanced-P: Puppeteer print of the actual PDF (cross-platform)
+                try
+                {
+                    _logger.LogInformation("=== ENHANCED METHOD P: Puppeteer print PDF (Page.printToPDF) ===");
+                    var extractedUrlForPrint = await TryExtractActualPdfUrlFromPage(cancellationToken);
+                    if (!string.IsNullOrEmpty(extractedUrlForPrint))
+                    {
+                        var pdfPrintedBytes = await TryPuppeteerPrintEinPdf(extractedUrlForPrint!, cancellationToken);
+                        if (pdfPrintedBytes != null && pdfPrintedBytes.Length > 0)
+                        {
+                            _logger.LogInformation("✅ ENHANCED METHOD P SUCCESS: Puppeteer print - {FileSize} bytes", pdfPrintedBytes.Length);
+                            await SaveEinLetterPdfWithMethodIdentifier(pdfPrintedBytes, "Enhanced_MethodP_PuppeteerPrint", data, cancellationToken);
+                            successfulMethods.Add("Enhanced_MethodP_PuppeteerPrint");
+                            if (firstSuccessfulBlobUrl == null)
+                            {
+                                anyMethodSucceeded = true;
+                                firstSuccessfulBlobUrl = "Enhanced_MethodP_PuppeteerPrint_Success";
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning("❌ ENHANCED METHOD P FAILED: Puppeteer print returned null or empty");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("❌ ENHANCED METHOD P SKIPPED: Could not extract actual PDF URL");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("❌ ENHANCED METHOD P EXCEPTION: Puppeteer print failed - {Message}", ex.Message);
+        }
+
                 // Method Enhanced-2: Try ultimate fallback PDF download
                 _logger.LogInformation("=== ENHANCED METHOD 2: Ultimate fallback PDF download ===");
         pdfBytes = await TryUltimateFallbackPdfDownload(cancellationToken);
@@ -6823,7 +6788,6 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
         {
                     _logger.LogWarning("❌ ENHANCED METHOD 2 FAILED: Ultimate fallback returned null or empty");
         }
-
                 // Method Enhanced-3: Try to capture from browser viewer
                 _logger.LogInformation("=== ENHANCED METHOD 3: Capture from browser viewer ===");
         pdfBytes = await TryCapturePdfFromBrowserViewer(cancellationToken);
@@ -7381,7 +7345,338 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
             return data[0] == 0x25 && data[1] == 0x50 && data[2] == 0x44 && data[3] == 0x46; // %PDF
         }
 
-        
+        // ============================================================================
+        // PUPPETEERSHARP-BASED PDF DOWNLOAD METHODS (Additional Download Strategies)
+        // ============================================================================
+
+        /// <summary>
+        /// Method 7: PuppeteerSharp-based PDF download using browser automation
+        /// This method provides an alternative to Selenium for PDF capture
+        /// </summary>
+        private async Task<byte[]?> TryPuppeteerSharpPdfDownload(CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("🔄 METHOD 7: Attempting PuppeteerSharp PDF download...");
+                
+                // Download browser if not already available
+                await new BrowserFetcher().DownloadAsync();
+                
+                using var browser = await Puppeteer.LaunchAsync(new LaunchOptions
+                {
+                    Headless = true,
+                    Args = new[] { 
+                        "--no-sandbox", 
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-web-security",
+                        "--allow-running-insecure-content",
+                        "--enable-print-browser-process",
+                        "--kiosk-printing",
+                        "--print-to-pdf-no-header",
+                        "--run-all-compositor-stages-before-draw",
+                        "--disable-background-timer-throttling",
+                        "--disable-renderer-backgrounding",
+                        "--disable-backgrounding-occluded-windows"
+                    }
+                });
+
+                using var page = await browser.NewPageAsync();
+                
+                // Set viewport and user agent
+                await page.SetViewportAsync(new ViewPortOptions { Width = 1920, Height = 1080 });
+                await page.SetUserAgentAsync("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36");
+                
+                // Navigate to the current page (assuming we're already on the IRS page)
+                var currentUrl = Driver?.Url;
+                if (string.IsNullOrEmpty(currentUrl))
+                {
+                    _logger.LogWarning("No current URL available for PuppeteerSharp navigation");
+                    return null;
+                }
+                
+                _logger.LogInformation("Navigating to current page with PuppeteerSharp: {Url}", currentUrl);
+                
+                // Navigate to the current page
+                await page.GoToAsync(currentUrl, new NavigationOptions 
+                { 
+                    WaitUntil = new[] { WaitUntilNavigation.Networkidle0 },
+                    Timeout = 30000
+                });
+
+                // Wait for the page to fully load
+                await page.WaitForTimeoutAsync(2000);
+
+                // Extract the PDF URL from the page
+                var pdfUrl = await page.EvaluateExpressionAsync<string>(
+                    @"document.querySelector('a[href*="".pdf""]')?.href || 
+                      document.querySelector('a[onclick*=""pdf""]')?.href ||
+                      document.querySelector('a[href*=""CP575""]')?.href ||
+                      document.querySelector('a[onclick*=""openPDFNoticeWindow""]')?.href"
+                );
+
+                if (string.IsNullOrEmpty(pdfUrl))
+                {
+                    _logger.LogWarning("PDF link not found on the page with PuppeteerSharp");
+                    return null;
+                }
+
+                _logger.LogInformation("Found PDF URL with PuppeteerSharp: {Url}", pdfUrl);
+
+                // Navigate to the PDF URL
+                await page.GoToAsync(pdfUrl, new NavigationOptions 
+                { 
+                    WaitUntil = new[] { WaitUntilNavigation.Load },
+                    Timeout = 60000
+                });
+
+                // Wait for PDF to fully load
+                await page.WaitForTimeoutAsync(3000);
+
+                // Method 7A: Use Chrome DevTools Protocol to print to PDF
+                var pdfBytes = await TryPuppeteerSharpPrintToPdf(page, cancellationToken);
+                if (pdfBytes != null && pdfBytes.Length > 0)
+                {
+                    _logger.LogInformation("✅ METHOD 7A SUCCESS: PuppeteerSharp print to PDF - {FileSize} bytes", pdfBytes.Length);
+                    return pdfBytes;
+                }
+                
+                // Method 7B: Alternative - Generate PDF using page.PdfDataAsync
+                pdfBytes = await TryPuppeteerSharpPagePdf(page, cancellationToken);
+                if (pdfBytes != null && pdfBytes.Length > 0)
+                {
+                    _logger.LogInformation("✅ METHOD 7B SUCCESS: PuppeteerSharp page.PdfDataAsync - {FileSize} bytes", pdfBytes.Length);
+                    return pdfBytes;
+                }
+                
+                // Method 7C: Try to capture PDF from embedded content
+                pdfBytes = await TryPuppeteerSharpEmbeddedPdfCapture(page, cancellationToken);
+                if (pdfBytes != null && pdfBytes.Length > 0)
+                {
+                    _logger.LogInformation("✅ METHOD 7C SUCCESS: PuppeteerSharp embedded PDF capture - {FileSize} bytes", pdfBytes.Length);
+                    return pdfBytes;
+                }
+
+                _logger.LogWarning("All PuppeteerSharp PDF download methods failed");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Failed to get alert text: {Message}", ex.Message);
+                return null;
+            }
+        }
+
+        // Puppeteer-based print of the actual PDF URL using CDP Page.printToPDF
+        private async Task<byte[]?> TryPuppeteerPrintEinPdf(string pdfUrl, CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("Puppeteer print: Navigating to {Url}", pdfUrl);
+                await new PuppeteerSharp.BrowserFetcher().DownloadAsync();
+                using var browser = await PuppeteerSharp.Puppeteer.LaunchAsync(new PuppeteerSharp.LaunchOptions
+                {
+                    Headless = true,
+                    Args = new[]
+                    {
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage"
+                    }
+                });
+
+                using var page = await browser.NewPageAsync();
+                await page.GoToAsync(pdfUrl, new PuppeteerSharp.NavigationOptions
+                {
+                    WaitUntil = new[] { PuppeteerSharp.WaitUntilNavigation.Load },
+                    Timeout = 60000
+                });
+
+                // Small wait to ensure the viewer fully loads the PDF
+                await page.WaitForTimeoutAsync(2000);
+
+                var client = await page.Target.CreateCDPSessionAsync();
+                var printParams = new
+                {
+                    landscape = false,
+                    displayHeaderFooter = false,
+                    printBackground = true,
+                    scale = 1.0,
+                    paperWidth = 8.5,
+                    paperHeight = 11.0,
+                    marginTop = 0.4,
+                    marginBottom = 0.4,
+                    marginLeft = 0.4,
+                    marginRight = 0.4,
+                    pageRanges = "",
+                    ignoreInvalidPageRanges = false,
+                    headerTemplate = "",
+                    footerTemplate = "",
+                    preferCSSPageSize = true
+                };
+
+                var result = await client.SendAsync("Page.printToPDF", printParams);
+                var pdfData = result?["data"]?.ToString();
+                if (string.IsNullOrEmpty(pdfData))
+                {
+                    _logger.LogWarning("Puppeteer print returned empty data");
+                    return null;
+                }
+                
+                var bytes = Convert.FromBase64String(pdfData);
+                if (IsValidPdf(bytes))
+                {
+                    _logger.LogInformation("Successfully generated PDF via PuppeteerSharp CDP: {FileSize} bytes", bytes.Length);
+                    return bytes;
+                }
+                else
+                {
+                    _logger.LogWarning("Generated PDF data is not valid");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("PuppeteerSharp CDP print to PDF failed: {Message}", ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Method 7B: Generate PDF using PuppeteerSharp's page.PdfDataAsync function
+        /// </summary>
+        private async Task<byte[]?> TryPuppeteerSharpPagePdf(IPage page, CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting PuppeteerSharp page.PdfDataAsync...");
+                
+                // Generate PDF using Puppeteer's PDF function
+                var pdfBytes = await page.PdfDataAsync(new PdfOptions
+                {
+                    Format = PuppeteerSharp.Media.PaperFormat.Letter,
+                    PrintBackground = true,
+                    MarginOptions = new PuppeteerSharp.Media.MarginOptions
+                    {
+                        Top = "0.4in",
+                        Right = "0.4in",
+                        Bottom = "0.4in",
+                        Left = "0.4in"
+                    },
+                    PreferCSSPageSize = true,
+                    DisplayHeaderFooter = false
+                });
+
+                if (pdfBytes != null && pdfBytes.Length > 0 && IsValidPdf(pdfBytes))
+                {
+                    _logger.LogInformation("Successfully generated PDF via PuppeteerSharp page.PdfDataAsync: {FileSize} bytes", pdfBytes.Length);
+                    return pdfBytes;
+                }
+                else
+                {
+                    _logger.LogWarning("Generated PDF data is not valid");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("PuppeteerSharp page.PdfDataAsync failed: {Message}", ex.Message);
+                return null;
+            }
+        }
+        /// <summary>
+        /// Method 7C: Try to capture PDF from embedded content via PuppeteerSharp
+        /// </summary>
+        private async Task<byte[]?> TryPuppeteerSharpEmbeddedPdfCapture(IPage page, CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting PuppeteerSharp embedded PDF capture...");
+                
+                // Try to find PDF content in the page
+                var pdfEmbed = await page.EvaluateExpressionAsync<string>(
+                    @"document.querySelector('embed[type=""application/pdf""]')?.src || 
+                      document.querySelector('iframe[src*="".pdf""]')?.src || 
+                      document.querySelector('object[type=""application/pdf""]')?.data"
+                );
+                
+                if (!string.IsNullOrEmpty(pdfEmbed))
+                {
+                    _logger.LogInformation("Found embedded PDF with PuppeteerSharp: {Url}", pdfEmbed);
+                    
+                    // Navigate to the embedded PDF
+                    await page.GoToAsync(pdfEmbed, new NavigationOptions 
+                    { 
+                        WaitUntil = new[] { WaitUntilNavigation.Load },
+                        Timeout = 30000
+                    });
+                    
+                    await page.WaitForTimeoutAsync(2000);
+                    
+                    // Try to capture the PDF
+                    var pdfBytes = await page.PdfDataAsync(new PdfOptions
+                    {
+                        Format = PuppeteerSharp.Media.PaperFormat.Letter,
+                        PrintBackground = true,
+                        MarginOptions = new PuppeteerSharp.Media.MarginOptions
+                        {
+                            Top = "0.4in",
+                            Right = "0.4in",
+                            Bottom = "0.4in",
+                            Left = "0.4in"
+                        },
+                        PreferCSSPageSize = true,
+                        DisplayHeaderFooter = false
+                    });
+                    
+                    if (pdfBytes != null && pdfBytes.Length > 0 && IsValidPdf(pdfBytes))
+                    {
+                        _logger.LogInformation("Successfully captured embedded PDF via PuppeteerSharp: {FileSize} bytes", pdfBytes.Length);
+                        return pdfBytes;
+                    }
+                }
+                
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("PuppeteerSharp embedded PDF capture failed: {Message}", ex.Message);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Method 7D: Direct HTTP download of PDF using HttpClient (fallback)
+        /// </summary>
+        private async Task<byte[]?> TryPuppeteerSharpDirectDownload(string pdfUrl, CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("Attempting PuppeteerSharp direct HTTP download: {Url}", pdfUrl);
+                
+                // Add cookies/headers if needed for authentication
+                var response = await _httpClient.GetAsync(pdfUrl, cancellationToken);
+                response.EnsureSuccessStatusCode();
+
+                var pdfBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+                
+                if (pdfBytes.Length > 0 && IsValidPdf(pdfBytes))
+                {
+                    _logger.LogInformation("Successfully downloaded PDF via HTTP: {FileSize} bytes", pdfBytes.Length);
+                    return pdfBytes;
+                }
+                else
+                {
+                    _logger.LogWarning("Downloaded PDF is invalid or incomplete");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug("PuppeteerSharp direct HTTP download failed: {Message}", ex.Message);
+                return null;
+            }
+        }
 
         /// <summary>
         /// Safely gets a truncated version of the page source for logging purposes
@@ -7400,7 +7695,7 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
             }
             catch (Exception ex)
             {
-                _logger.LogWarning("Failed to get page source: {Message}", ex.Message);
+                _logger.LogDebug("Failed to get truncated page source: {Message}", ex.Message);
                 return "N/A";
             }
         }
@@ -7846,4 +8141,3 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
         }
     }
 }
-

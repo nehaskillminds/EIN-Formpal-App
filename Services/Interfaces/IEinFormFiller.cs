@@ -12,9 +12,12 @@ namespace EinAutomation.Api.Services.Interfaces
         // Sync interaction methods
         bool FillField(By locator, string value, string label = "field");
         bool ClickButton(By locator, string description = "button", int retries = 3);
-        bool SelectRadio(string radioId, string description = "radio");
-        bool SelectDropdown(By locator, string value, string label = "dropdown");
+        bool ClickButtonByAriaLabel(string ariaLabel, string description = "button", int retries = 3);
+
+        bool SelectRadio(string? radioId, string description = "radio", int? timeoutSeconds = null, int maxRetries = 3);
         void ClearAndFill(By locator, string value, string description);
+        void ScrollToElement(By locator, string description = "element", bool center = true);
+        void ScrollToBottom(int additionalOffset = 0, int maxAttempts = 0);
         void Cleanup();
 
         // Async additions required by AutomationOrchestrator

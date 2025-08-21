@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("EinAutomation.Api")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+671688aa10e47fb62bfafd68a6466ebd30fe76b4")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ec61e1d9cd29ed93e068f6bd32b6bb5039a056b1")]
 [assembly: System.Reflection.AssemblyProductAttribute("EinAutomation.Api")]
 [assembly: System.Reflection.AssemblyTitleAttribute("EinAutomation.Api")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

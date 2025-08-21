@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using System.Linq;
 using EinAutomation.Api.Infrastructure;
 using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace EinAutomation.Api.Services
 {
@@ -131,48 +132,434 @@ namespace EinAutomation.Api.Services
             return false;
         }
 
-        public bool SelectRadio(string? radioId, string description = "radio")
+        public bool ClickButtonByAriaLabel(string ariaLabel, string description = "button", int retries = 3)
         {
-            if (string.IsNullOrEmpty(radioId))
+            if (Wait == null || Driver == null)
             {
-                _logger.LogWarning("Cannot select {Description} - radioId is null or empty", description);
+                _logger.LogWarning("Cannot click {Description} - Wait or Driver is null", description);
                 return false;
             }
 
+            By locator = By.XPath($"//a[@aria-label='{ariaLabel}']");
+
+            for (int attempt = 0; attempt <= retries; attempt++)
+            {
+                try
+                {
+                    var element = WaitHelper.WaitUntilExists(Driver, locator, Timeout);
+                    ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", element);
+                    Task.Delay(500).Wait();
+
+                    var clickableElement = WaitHelper.WaitUntilClickable(Driver, locator, Timeout);
+
+                    try
+                    {
+                        clickableElement.Click();
+                        _logger.LogInformation("Clicked {Description} ({AriaLabel})", description, ariaLabel);
+                        Task.Delay(1000).Wait();
+                        return true;
+                    }
+                    catch
+                    {
+                        try
+                        {
+                            ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].click();", clickableElement);
+                            _logger.LogInformation("Clicked {Description} ({AriaLabel}) via JavaScript", description, ariaLabel);
+                            Task.Delay(1000).Wait();
+                            return true;
+                        }
+                        catch
+                        {
+                            new Actions(Driver).MoveToElement(clickableElement).Click().Perform();
+                            _logger.LogInformation("Clicked {Description} ({AriaLabel}) via Actions", description, ariaLabel);
+                            Task.Delay(1000).Wait();
+                            return true;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (attempt == retries)
+                    {
+                        _logger.LogWarning(ex, "Failed to click {Description} ({AriaLabel}) after {Retries} attempts", description, ariaLabel, retries + 1);
+                        return false;
+                    }
+                    _logger.LogWarning(ex, "Click attempt {Attempt} failed for {Description} ({AriaLabel}), retrying...", attempt + 1, description, ariaLabel);
+                    Task.Delay(1000).Wait();
+                }
+            }
+            return false;
+        }
+
+
+
+
+public bool SelectRadio(string? radioId, string description = "radio", int? timeoutSeconds = null, int maxRetries = 3)
+{
+    if (string.IsNullOrEmpty(radioId))
+    {
+        _logger.LogWarning("Cannot select {Description} - radioId is null or empty", description);
+        return false;
+    }
+
+    if (Wait == null || Driver == null)
+    {
+        _logger.LogWarning("Cannot select {Description} - Wait or Driver is null", description);
+        return false;
+    }
+
+    var js = (IJavaScriptExecutor)Driver;
+    var effectiveTimeout = TimeSpan.FromSeconds(timeoutSeconds ?? Timeout); // TimeSpan for internal use
+    
+    for (int attempt = 1; attempt <= maxRetries; attempt++)
+    {
+        try
+        {
+            _logger.LogDebug("Attempting to select {Description} (attempt {Attempt}/{MaxRetries})", description, attempt, maxRetries);
+
+            // Strategy 1: Enhanced JavaScript selection with framework event handling
+            if (TryJavaScriptSelection(js, radioId, description))
+                return true;
+
+            // Strategy 2: Wait and click with scroll into view
+            if (TryDirectClick(radioId, description, (int)effectiveTimeout.TotalSeconds)) // Convert TimeSpan to int (seconds)
+                return true;
+
+            // Strategy 3: Label-based selection
+            if (TryLabelClick(js, radioId, description))
+                return true;
+
+            // Strategy 4: Parent container click (for custom radio implementations)
+            if (TryParentContainerClick(js, radioId, description))
+                return true;
+
+            // Strategy 5: CSS selector alternatives
+            if (TryCssSelectorAlternatives(js, radioId, description))
+                return true;
+
+            // Wait before retry for dynamic content
+            if (attempt < maxRetries)
+            {
+                Thread.Sleep(500);
+                _logger.LogDebug("Waiting before retry {NextAttempt}", attempt + 1);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Attempt {Attempt} failed for {Description}", attempt, description);
+            if (attempt == maxRetries)
+            {
+                _logger.LogWarning(ex, "All attempts failed to select {Description} (ID: {RadioId})", description, radioId);
+            }
+        }
+    }
+
+    return false;
+}
+
+private bool TryJavaScriptSelection(IJavaScriptExecutor js, string radioId, string description)
+{
+    try
+    {
+        var jsResult = js.ExecuteScript(@"
+            var id = arguments[0];
+            var el = document.getElementById(id);
+            if (!el) return { success: false, reason: 'Element not found' };
+            
+            // Scroll into view
+            el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            
+            // Wait a moment for scroll
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    try {
+                        // Set checked property
+                        el.checked = true;
+                        
+                        // Trigger all possible events that frameworks might listen to
+                        var events = ['input', 'change', 'click'];
+                        events.forEach(eventType => {
+                            try {
+                                // Native event
+                                var event = new Event(eventType, { 
+                                    bubbles: true, 
+                                    cancelable: true,
+                                    composed: true 
+                                });
+                                el.dispatchEvent(event);
+                                
+                                // jQuery event (if jQuery is present)
+                                if (window.jQuery) {
+                                    window.jQuery(el).trigger(eventType);
+                                }
+                                
+                                // React synthetic event simulation
+                                if (el._valueTracker) {
+                                    el._valueTracker.setValue('');
+                                }
+                            } catch (e) {}
+                        });
+                        
+                        // Angular-specific event handling
+                        if (window.angular) {
+                            try {
+                                var scope = window.angular.element(el).scope();
+                                if (scope && scope.$apply) {
+                                    scope.$apply();
+                                }
+                            } catch (e) {}
+                        }
+                        
+                        // Vue.js event handling
+                        if (el.__vue__) {
+                            try {
+                                el.__vue__.$forceUpdate();
+                            } catch (e) {}
+                        }
+                        
+                        resolve({ success: !!el.checked, reason: el.checked ? 'Success' : 'Not checked after operation' });
+                    } catch (e) {
+                        resolve({ success: false, reason: e.message });
+                    }
+                }, 100);
+            });
+        ", radioId);
+
+        // Handle Promise result (newer Selenium versions)
+        if (jsResult is Dictionary<string, object?> result && result != null)
+        {
+            var success = result.TryGetValue("success", out var successValue) && successValue is bool successBool && successBool;
+            if (success)
+            {
+                _logger.LogInformation("Selected {Description} via enhanced JavaScript", description);
+                return true;
+            }
+        }
+        // Handle direct boolean result (older Selenium versions)
+        else if (jsResult is bool directResult && directResult)
+        {
+            _logger.LogInformation("Selected {Description} via JavaScript", description);
+            return true;
+        }
+    }
+    catch (Exception ex)
+    {
+        _logger.LogDebug(ex, "JavaScript selection failed for {Description}", description);
+    }
+    
+    return false;
+}
+
+private bool TryDirectClick(string radioId, string description, int timeoutSeconds) // Changed to int
+{
+    try
+    {
+        var radio = WaitHelper.WaitUntilClickable(Driver, By.Id(radioId), timeoutSeconds); // Assumes WaitUntilClickable accepts int
+        
+        // Scroll into view before clicking
+        var js = (IJavaScriptExecutor)Driver;
+        js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", radio);
+        Thread.Sleep(200); // Brief pause for scroll completion
+        
+        radio.Click();
+        
+        // Verify selection
+        if (radio.Selected)
+        {
+            _logger.LogInformation("Selected {Description} via direct click", description);
+            return true;
+        }
+    }
+    catch (Exception ex)
+    {
+        _logger.LogDebug(ex, "Direct click failed for {Description}", description);
+    }
+    
+    return false;
+}
+
+private bool TryLabelClick(IJavaScriptExecutor js, string radioId, string description)
+{
+    try
+    {
+        // Try multiple label selector approaches
+        var labelSelectors = new[]
+        {
+            $"label[for='{radioId}']",
+            $"label[for=\"{radioId}\"]",
+            $"//label[@for='{radioId}']"
+        };
+
+        foreach (var selector in labelSelectors)
+        {
             try
             {
-                if (Wait == null || Driver == null)
+                IWebElement label = null;
+                
+                if (selector.StartsWith("//"))
                 {
-                    _logger.LogWarning("Cannot select {Description} - Wait or Driver is null", description);
-                    return false;
+                    var labels = Driver.FindElements(By.XPath(selector));
+                    label = labels.FirstOrDefault();
+                }
+                else
+                {
+                    var labels = Driver.FindElements(By.CssSelector(selector));
+                    label = labels.FirstOrDefault();
                 }
 
-                var radio = WaitHelper.WaitUntilClickable(Driver, By.Id(radioId), Timeout);
-                ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", radio);
-                
-                var result = ((IJavaScriptExecutor)Driver).ExecuteScript(
-                    $"document.getElementById('{radioId}').checked = true; return document.getElementById('{radioId}').checked;");
-                
-                if (result != null && (bool)result)
+                if (label != null)
                 {
-                    _logger.LogInformation("Selected {Description} via JavaScript", description);
+                    js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", label);
+                    Thread.Sleep(100);
+                    
+                    try
+                    {
+                        label.Click();
+                    }
+                    catch
+                    {
+                        js.ExecuteScript("arguments[0].click();", label);
+                    }
+                    
+                    _logger.LogInformation("Selected {Description} via label click", description);
                     return true;
                 }
-                
-                radio.Click();
-                _logger.LogInformation("Selected {Description} via click", description);
-                return true;
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to select {Description} (ID: {RadioId})", description, radioId);
-                return false;
+                _logger.LogDebug(ex, "Label selector {Selector} failed for {Description}", selector, description);
             }
         }
+    }
+    catch (Exception ex)
+    {
+        _logger.LogDebug(ex, "Label click strategy failed for {Description}", description);
+    }
+    
+    return false;
+}
+
+private bool TryParentContainerClick(IJavaScriptExecutor js, string radioId, string description)
+{
+    try
+    {
+        // Some frameworks wrap radio buttons in clickable containers
+        var containerSelectors = new[]
+        {
+            $"div:has(input#{radioId})",
+            $"span:has(input#{radioId})",
+            $"label:has(input#{radioId})",
+            $"[data-radio-id='{radioId}']",
+            $"[data-testid*='{radioId}']"
+        };
+
+        foreach (var selector in containerSelectors)
+        {
+            try
+            {
+                var containers = Driver.FindElements(By.CssSelector(selector));
+                var container = containers.FirstOrDefault();
+                
+                if (container != null)
+                {
+                    js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", container);
+                    Thread.Sleep(100);
+                    
+                    try
+                    {
+                        container.Click();
+                    }
+                    catch
+                    {
+                        js.ExecuteScript("arguments[0].click();", container);
+                    }
+                    
+                    _logger.LogInformation("Selected {Description} via parent container click", description);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Container selector {Selector} failed for {Description}", selector, description);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        _logger.LogDebug(ex, "Parent container click strategy failed for {Description}", description);
+    }
+    
+    return false;
+}
+
+private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, string description)
+{
+    try
+    {
+        // Try alternative ways to find the radio button
+        var alternativeSelectors = new[]
+        {
+            $"input[type='radio'][id='{radioId}']",
+            $"input[type='radio'][name*='{radioId}']",
+            $"input[type='radio'][value='{radioId}']",
+            $"input[id='{radioId}']",
+            $"[role='radio'][id='{radioId}']",
+            $"[role='radio'][data-value='{radioId}']"
+        };
+
+        foreach (var selector in alternativeSelectors)
+        {
+            try
+            {
+                var elements = Driver.FindElements(By.CssSelector(selector));
+                var element = elements.FirstOrDefault();
+                
+                if (element != null)
+                {
+                    js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", element);
+                    Thread.Sleep(100);
+                    
+                    // Try multiple interaction methods
+                    var interactionMethods = new Action[]
+                    {
+                        () => element.Click(),
+                        () => js.ExecuteScript("arguments[0].click();", element),
+                        () => js.ExecuteScript("arguments[0].checked = true; arguments[0].dispatchEvent(new Event('change', {bubbles: true}));", element)
+                    };
+
+                    foreach (var method in interactionMethods)
+                    {
+                        try
+                        {
+                            method();
+                            _logger.LogInformation("Selected {Description} via alternative selector {Selector}", description, selector);
+                            return true;
+                        }
+                        catch
+                        {
+                            // Continue to next method
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Alternative selector {Selector} failed for {Description}", selector, description);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        _logger.LogDebug(ex, "CSS selector alternatives strategy failed for {Description}", description);
+    }
+    
+    return false;
+}
+
 
         public bool SelectDropdown(By locator, string? value, string label = "dropdown")
         {
-            if (string.IsNullOrEmpty(value))
+            if (string.IsNullOrWhiteSpace(value))
             {
                 _logger.LogWarning("Cannot select {Label} - value is null or empty", label);
                 return false;
@@ -186,11 +573,114 @@ namespace EinAutomation.Api.Services
                     return false;
                 }
 
+                // Wait for element and scroll into view
                 var element = WaitHelper.WaitUntilClickable(Driver, locator, Timeout);
+                ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", element);
+                Task.Delay(200).Wait();
+
                 var select = new SelectElement(element);
-                select.SelectByValue(value);
-                _logger.LogInformation("Selected {Label}: {Value}", label, value);
-                return true;
+
+                // Ensure options are present
+                if (select.Options == null || select.Options.Count == 0)
+                {
+                    // Small wait-and-retry once for dynamic loads
+                    Task.Delay(500).Wait();
+                    select = new SelectElement(element);
+                }
+
+                string normalized = value.Trim();
+
+                // Try 1: by value (exact)
+                try
+                {
+                    select.SelectByValue(normalized);
+                    ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+                    _logger.LogInformation("Selected {Label} by value: {Value}", label, normalized);
+                    return true;
+                }
+                catch { /* fall through */ }
+
+                // Try 2: by text (exact)
+                try
+                {
+                    select.SelectByText(normalized);
+                    ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+                    _logger.LogInformation("Selected {Label} by text: {Value}", label, normalized);
+                    return true;
+                }
+                catch { /* fall through */ }
+
+                // Try 3: case-insensitive text match
+                var byTextIgnoreCase = select.Options.FirstOrDefault(o => string.Equals(o.Text?.Trim(), normalized, StringComparison.OrdinalIgnoreCase));
+                if (byTextIgnoreCase != null)
+                {
+                    byTextIgnoreCase.Click();
+                    ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+                    _logger.LogInformation("Selected {Label} by case-insensitive text: {Value}", label, normalized);
+                    return true;
+                }
+
+                // Try 4: partial match on text or value
+                var lowered = normalized.ToLowerInvariant();
+                var partial = select.Options.FirstOrDefault(o => (o.Text ?? string.Empty).Trim().ToLowerInvariant() == lowered || (o.Text ?? string.Empty).ToLowerInvariant().Contains(lowered) || (o.GetAttribute("value") ?? string.Empty).ToLowerInvariant().Contains(lowered));
+                if (partial != null)
+                {
+                    partial.Click();
+                    ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+                    _logger.LogInformation("Selected {Label} by partial match: {Value}", label, normalized);
+                    return true;
+                }
+
+                // Try 5: if the input looks like a month number (1-12), try common month name/value variants
+                if (int.TryParse(normalized, out var monthNum) && monthNum >= 1 && monthNum <= 12)
+                {
+                    var monthName = CultureInfo.InvariantCulture.DateTimeFormat.GetMonthName(monthNum);
+                    var monthAbbrev = CultureInfo.InvariantCulture.DateTimeFormat.GetAbbreviatedMonthName(monthNum);
+
+                    var candidates = new List<string>
+                    {
+                        monthName,                                     // e.g., "August"
+                        monthName.ToUpperInvariant(),                  // "AUGUST"
+                        CultureInfo.InvariantCulture.TextInfo.ToTitleCase(monthName.ToLowerInvariant()),
+                        monthAbbrev,                                   // "Aug"
+                        monthAbbrev.ToUpperInvariant(),                // "AUG"
+                        monthNum.ToString("00"),                      // "08"
+                        monthNum.ToString()                            // "8"
+                    };
+
+                    foreach (var candidate in candidates)
+                    {
+                        try
+                        {
+                            select.SelectByValue(candidate);
+                            ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+                            _logger.LogInformation("Selected {Label} by month candidate value: {Candidate} (from {Original})", label, candidate, normalized);
+                            return true;
+                        }
+                        catch { /* try next */ }
+
+                        try
+                        {
+                            select.SelectByText(candidate);
+                            ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+                            _logger.LogInformation("Selected {Label} by month candidate text: {Candidate} (from {Original})", label, candidate, normalized);
+                            return true;
+                        }
+                        catch { /* try next */ }
+
+                        var option = select.Options.FirstOrDefault(o => string.Equals(o.Text?.Trim(), candidate, StringComparison.OrdinalIgnoreCase) || string.Equals(o.GetAttribute("value")?.Trim(), candidate, StringComparison.OrdinalIgnoreCase));
+                        if (option != null)
+                        {
+                            option.Click();
+                            ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].dispatchEvent(new Event('change', {bubbles:true}));", element);
+                            _logger.LogInformation("Selected {Label} by month candidate option match: {Candidate} (from {Original})", label, candidate, normalized);
+                            return true;
+                        }
+                    }
+                }
+
+                _logger.LogWarning("No matching option found for {Label} with value/text '{Value}'", label, normalized);
+                return false;
             }
             catch (Exception ex)
             {
@@ -745,6 +1235,85 @@ namespace EinAutomation.Api.Services
             }
         }
 
+        public void ScrollToElement(By locator, string description = "element", bool center = true)
+        {
+            try
+            {
+                if (Driver == null)
+                {
+                    _logger.LogWarning("Cannot scroll to {Description} - Driver is null", description);
+                    return;
+                }
+
+                var element = WaitHelper.WaitUntilExists(Driver, locator, Timeout);
+                var block = center ? "center" : "start";
+                ((IJavaScriptExecutor)Driver).ExecuteScript($"arguments[0].scrollIntoView({{block: '{block}', inline: 'nearest'}});", element);
+                Task.Delay(300).Wait();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to scroll to {Description}", description);
+                try
+                {
+                    if (Driver != null)
+                    {
+                        new Actions(Driver).MoveToElement(Driver.FindElement(locator)).Perform();
+                        Task.Delay(200).Wait();
+                    }
+                }
+                catch (Exception inner)
+                {
+                    _logger.LogWarning(inner, "Fallback scroll to {Description} via Actions failed", description);
+                }
+            }
+        }
+
+        public void ScrollToBottom(int additionalOffset = 0, int maxAttempts = 3)
+        {
+            try
+            {
+                if (Driver == null)
+                {
+                    _logger.LogWarning("Cannot scroll to bottom - Driver is null");
+                    return;
+                }
+
+                long lastHeight = 0;
+                long currentHeight = 0;
+                int attempts = 0;
+
+                do
+                {
+                    lastHeight = currentHeight;
+                    
+                    // Try multiple scroll height sources
+                    ((IJavaScriptExecutor)Driver).ExecuteScript(
+                        "window.scrollTo(0, Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));"
+                    );
+                    
+                    Task.Delay(500).Wait(); // Longer delay for dynamic content
+                    
+                    currentHeight = (long)((IJavaScriptExecutor)Driver).ExecuteScript(
+                        "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
+                    );
+                    
+                    attempts++;
+                } 
+                while (currentHeight > lastHeight && attempts < maxAttempts);
+
+                if (additionalOffset != 0)
+                {
+                    ((IJavaScriptExecutor)Driver).ExecuteScript("window.scrollBy(0, arguments[0]);", additionalOffset);
+                }
+                
+                Task.Delay(300).Wait();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to scroll to bottom");
+            }
+        }
+
         public void CaptureBrowserLogs()
         {
             try
@@ -897,93 +1466,93 @@ namespace EinAutomation.Api.Services
             };
         }
 
-public void InitializeDriver()
-{
-    try
-    {
-        LogSystemResources();
-        // Ensure HOME variable and Chrome data directories
-        var chromeHome = "/tmp/chrome-home";
-        Environment.SetEnvironmentVariable("HOME", chromeHome);
-        Directory.CreateDirectory(chromeHome);
-        var chromeDownloads = "/tmp/chrome-home/Downloads";
-        Directory.CreateDirectory(chromeDownloads);
-        var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-        Directory.CreateDirectory(chromeUserData);
-        var options = new ChromeOptions
-        {
-            BinaryLocation = "/usr/bin/chromium",
-            AcceptInsecureCertificates = true
-        };
-        // Chromium runtime arguments
-        options.AddArgument($"--user-data-dir={chromeUserData}");
-        options.AddArgument("--headless=new");
-        options.AddArgument("--no-sandbox");
-        options.AddArgument("--disable-setuid-sandbox");
-        options.AddArgument("--disable-dev-shm-usage");
-        options.AddArgument("--disable-gpu");
-        options.AddArgument("--disable-software-rasterizer");
-        options.AddArgument("--disable-infobars");
-        options.AddArgument("--disable-blink-features=AutomationControlled");
-        options.AddArgument("--disable-extensions");
-        options.AddArgument("--no-first-run");
-        options.AddArgument("--no-default-browser-check");
-        options.AddArgument("--disable-background-networking");
-        options.AddArgument("--disable-sync");
-        options.AddArgument("--disable-default-apps");
-        options.AddArgument("--disable-translate");
-        options.AddArgument("--window-size=1920,1080");
-        options.AddArgument("--remote-debugging-port=9222");
-        options.AddArgument("--remote-debugging-address=0.0.0.0");
-        options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-        // Route downloads into the dedicated HOME/Downloads directory
-        options.AddUserProfilePreference("download.default_directory", chromeDownloads);
-        options.AddUserProfilePreference("download.prompt_for_download", false);
-        options.AddUserProfilePreference("download.directory_upgrade", true);
-        options.AddUserProfilePreference("safebrowsing.enabled", true);
-        options.AddUserProfilePreference("plugins.always_open_pdf_externally", true);
-        options.AddUserProfilePreference("profile.default_content_setting_values.automatic_downloads", 1);
-        // ChromeDriver service configuration
-        var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName("/usr/bin/"), "chromedriver");
-        driverService.LogPath = "/tmp/chromedriver.log"; // Force a known path
-        driverService.EnableVerboseLogging = true;
-        driverService.SuppressInitialDiagnosticInformation = false;
-        Driver = new ChromeDriver(driverService, options);
-        Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
-        // Disable JS popups
-        ((IJavaScriptExecutor)Driver).ExecuteScript(@"
-            window.alert = function() { return true; };
-            window.confirm = function() { return true; };
-            window.prompt = function() { return null; };
-            window.open = function() { return null; };
-        ");
-        _logger.LogInformation("WebDriver initialized successfully with Chromium");
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Failed to initialize WebDriver");
-        LogChromeDriverDiagnostics();
-        throw;
-    }
-}
+// public void InitializeDriver()
+// {
+//     try
+//     {
+//         LogSystemResources();
+//         // Ensure HOME variable and Chrome data directories
+//         var chromeHome = "/tmp/chrome-home";
+//         Environment.SetEnvironmentVariable("HOME", chromeHome);
+//         Directory.CreateDirectory(chromeHome);
+//         var chromeDownloads = "/tmp/chrome-home/Downloads";
+//         Directory.CreateDirectory(chromeDownloads);
+//         var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+//         Directory.CreateDirectory(chromeUserData);
+//         var options = new ChromeOptions
+//         {
+//             BinaryLocation = "/usr/bin/chromium",
+//             AcceptInsecureCertificates = true
+//         };
+//         // Chromium runtime arguments
+//         options.AddArgument($"--user-data-dir={chromeUserData}");
+//         options.AddArgument("--headless=new");
+//         options.AddArgument("--no-sandbox");
+//         options.AddArgument("--disable-setuid-sandbox");
+//         options.AddArgument("--disable-dev-shm-usage");
+//         options.AddArgument("--disable-gpu");
+//         options.AddArgument("--disable-software-rasterizer");
+//         options.AddArgument("--disable-infobars");
+//         options.AddArgument("--disable-blink-features=AutomationControlled");
+//         options.AddArgument("--disable-extensions");
+//         options.AddArgument("--no-first-run");
+//         options.AddArgument("--no-default-browser-check");
+//         options.AddArgument("--disable-background-networking");
+//         options.AddArgument("--disable-sync");
+//         options.AddArgument("--disable-default-apps");
+//         options.AddArgument("--disable-translate");
+//         options.AddArgument("--window-size=1920,1080");
+//         options.AddArgument("--remote-debugging-port=9222");
+//         options.AddArgument("--remote-debugging-address=0.0.0.0");
+//         options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+//         // Route downloads into the dedicated HOME/Downloads directory
+//         options.AddUserProfilePreference("download.default_directory", chromeDownloads);
+//         options.AddUserProfilePreference("download.prompt_for_download", false);
+//         options.AddUserProfilePreference("download.directory_upgrade", true);
+//         options.AddUserProfilePreference("safebrowsing.enabled", true);
+//         options.AddUserProfilePreference("plugins.always_open_pdf_externally", true);
+//         options.AddUserProfilePreference("profile.default_content_setting_values.automatic_downloads", 1);
+//         // ChromeDriver service configuration
+//         var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName("/usr/bin/"), "chromedriver");
+//         driverService.LogPath = "/tmp/chromedriver.log"; // Force a known path
+//         driverService.EnableVerboseLogging = true;
+//         driverService.SuppressInitialDiagnosticInformation = false;
+//         Driver = new ChromeDriver(driverService, options);
+//         Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
+//         // Disable JS popups
+//         ((IJavaScriptExecutor)Driver).ExecuteScript(@"
+//             window.alert = function() { return true; };
+//             window.confirm = function() { return true; };
+//             window.prompt = function() { return null; };
+//             window.open = function() { return null; };
+//         ");
+//         _logger.LogInformation("WebDriver initialized successfully with Chromium");
+//     }
+//     catch (Exception ex)
+//     {
+//         _logger.LogError(ex, "Failed to initialize WebDriver");
+//         LogChromeDriverDiagnostics();
+//         throw;
+//     }
+// }
 
 // ________________________________________________________________________LOCAL DRIVER_______________________________________________
-        // public void InitializeDriver()
-        //     {
-        //         try
-        //         {
-        //             LogSystemResources(); // You need to implement this
+        public void InitializeDriver()
+            {
+                try
+                {
+                    LogSystemResources(); // You need to implement this
                     
-        //             var options = new ChromeOptions();
-        //             // Set Chrome arguments
-        //             options.AddArgument("--disable-gpu");
-        //             options.AddArgument("--enable-unsafe-swiftshader");
-        //             options.AddArgument("--no-sandbox");
-        //             options.AddArgument("--disable-dev-shm-usage");
-        //             options.AddArgument("--disable-blink-features=AutomationControlled");
-        //             options.AddArgument("--disable-infobars");
-        //             options.AddArgument("--window-size=1920,1080");
-        //             options.AddArgument("--start-maximized");
+                    var options = new ChromeOptions();
+                    // Set Chrome arguments
+                    options.AddArgument("--disable-gpu");
+                    options.AddArgument("--enable-unsafe-swiftshader");
+                    options.AddArgument("--no-sandbox");
+                    options.AddArgument("--disable-dev-shm-usage");
+                    options.AddArgument("--disable-blink-features=AutomationControlled");
+                    options.AddArgument("--disable-infobars");
+                    options.AddArgument("--window-size=1920,1080");
+                    options.AddArgument("--start-maximized");
                     
                  
 
@@ -991,53 +1560,53 @@ public void InitializeDriver()
 
                 
                     
-        //             // Set Chrome preferences
-        //         var prefs = new Dictionary<string, object>
-        //         {
-        //             ["profile.default_content_setting_values.popups"] = 2,
-        //             ["profile.default_content_setting_values.notifications"] = 2,
-        //             ["profile.default_content_setting_values.geolocation"] = 2,
-        //             ["credentials_enable_service"] = false,
-        //             ["profile.password_manager_enabled"] = false,
-        //             ["autofill.profile_enabled"] = false,
-        //             ["autofill.credit_card_enabled"] = false,
-        //             ["password_manager_enabled"] = false,
-        //             ["profile.password_dismissed_save_prompt"] = true,
-        //             ["plugins.always_open_pdf_externally"] = true,
-        //             ["download.prompt_for_download"] = false,
-        //             ["download.directory_upgrade"] = true,
-        //             ["safebrowsing.enabled"] = true,
+                    // Set Chrome preferences
+                var prefs = new Dictionary<string, object>
+                {
+                    ["profile.default_content_setting_values.popups"] = 2,
+                    ["profile.default_content_setting_values.notifications"] = 2,
+                    ["profile.default_content_setting_values.geolocation"] = 2,
+                    ["credentials_enable_service"] = false,
+                    ["profile.password_manager_enabled"] = false,
+                    ["autofill.profile_enabled"] = false,
+                    ["autofill.credit_card_enabled"] = false,
+                    ["password_manager_enabled"] = false,
+                    ["profile.password_dismissed_save_prompt"] = true,
+                    ["plugins.always_open_pdf_externally"] = true,
+                    ["download.prompt_for_download"] = false,
+                    ["download.directory_upgrade"] = true,
+                    ["safebrowsing.enabled"] = true,
 
                         
-        //             };
-        //             options.AddUserProfilePreference("prefs", prefs);
+                    };
+                    options.AddUserProfilePreference("prefs", prefs);
                     
-        //             // Use regular ChromeDriver with anti-detection options
-        //             var service = ChromeDriverService.CreateDefaultService();
-        //             Driver = new ChromeDriver(service, options);
+                    // Use regular ChromeDriver with anti-detection options
+                    var service = ChromeDriverService.CreateDefaultService();
+                    Driver = new ChromeDriver(service, options);
                     
-        //             // Option 2: Or use default if ChromeDriver is in PATH
-        //             // Driver = new ChromeDriver(options);
+                    // Option 2: Or use default if ChromeDriver is in PATH
+                    // Driver = new ChromeDriver(options);
                     
-        //             Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
+                    Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
                     
-        //             // Override JS functions
-        //             var js = (IJavaScriptExecutor)Driver;
-        //             js.ExecuteScript(@"
-        //                 window.alert = function() { return true; };
-        //                 window.confirm = function() { return true; };
-        //                 window.prompt = function() { return null; };
-        //                 window.open = function() { return null; };
-        //             ");
+                    // Override JS functions
+                    var js = (IJavaScriptExecutor)Driver;
+                    js.ExecuteScript(@"
+                        window.alert = function() { return true; };
+                        window.confirm = function() { return true; };
+                        window.prompt = function() { return null; };
+                        window.open = function() { return null; };
+                    ");
                     
-        //             Console.WriteLine("- WebDriver initialized successfully");
-        //         }
-        //         catch (Exception ex)
-        //         {
-        //             Console.Error.WriteLine($"Failed to initialize WebDriver: {ex.Message}");
-        //             throw;
-        //         }
-        //     }
+                    Console.WriteLine("- WebDriver initialized successfully");
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Failed to initialize WebDriver: {ex.Message}");
+                    throw;
+                }
+            }
 
 private void LogChromeDriverDiagnostics()
 {
