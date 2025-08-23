@@ -537,6 +537,95 @@ namespace EinAutomation.Api.Services
             }
         }
 
+        public async Task<bool> NotifySubmissionUploadToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName, string? accountId = null, string? entityId = null, string? caseId = null)
+        {
+            if (string.IsNullOrEmpty(entityProcessId) || string.IsNullOrEmpty(blobUrl) || string.IsNullOrEmpty(entityName))
+            {
+                _logger.LogError("Invalid input parameters for NotifySubmissionUploadToSalesforceAsync: entityProcessId, blobUrl, or entityName is null or empty");
+                return false;
+            }
+
+            try
+            {
+                _logger.LogInformation("Notifying Salesforce of EINSubmission upload for entity process ID: {EntityProcessId}, AccountId: {AccountId}, EntityId: {EntityId}, CaseId: {CaseId}", 
+                    entityProcessId, accountId, entityId, caseId);
+
+                if (!await EnsureAuthenticatedAsync())
+                {
+                    _logger.LogError("Failed to authenticate with Salesforce");
+                    return false;
+                }
+
+                var cleanName = Regex.Replace(entityName, @"\s+", "");
+                var fileName = $"{cleanName}-ID-EINSubmission";
+                var extension = "pdf";
+                var migrationId = $"{blobUrl.GetHashCode()}_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+
+                var payload = new
+                {
+                    Name = $"{fileName}.pdf",
+                    File_Extension__c = extension,
+                    Migration_ID__c = migrationId,
+                    File_Name__c = fileName,
+                    Parent_Name__c = "EntityProcess",
+                    Account_ID__c = accountId ?? "",
+                    Case_ID__c = caseId ?? "",
+                    Entity_ID__c = entityId ?? "",
+                    Order_ID__c = "",
+                    RFI_ID__c = "",
+                    Entity_Process_Id__c = entityProcessId,
+                    Blob_URL__c = blobUrl,
+                    Is_Content_Created__c = false,
+                    Is_Errored__c = false,
+                    Historical_Record__c = false,
+                    Exclude_from_Partner_API__c = false,
+                    Deleted_by_Client__c = false,
+                    Hidden_From_Client__c = true
+                };
+
+                var url = $"{_instanceUrl}/services/data/v59.0/sobjects/Content_Migration__c/";
+                var jsonContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+                _httpClient.DefaultRequestHeaders.Clear();
+                _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_accessToken}");
+
+                var response = await _httpClient.PostAsync(url, jsonContent);
+
+                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                {
+                    _logger.LogWarning("Token expired. Refreshing...");
+                    if (await InitializeSalesforceAuthAsync())
+                    {
+                        _httpClient.DefaultRequestHeaders.Clear();
+                        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_accessToken}");
+                        _httpClient.DefaultRequestHeaders.Add("Content-Type", "application/json");
+                        response = await _httpClient.PostAsync(url, jsonContent);
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("Salesforce notified of EINSubmission upload: {StatusCode}", response.StatusCode);
+                    return true;
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("Failed to notify Salesforce of EINSubmission upload: {StatusCode} - {Error}", response.StatusCode, errorContent);
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to notify Salesforce of EINSubmission upload");
+                return false;
+            }
+        }
+
         public async Task<bool> NotifyFailureScreenshotUploadToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName, string? accountId = null, string? entityId = null, string? caseId = null)
         {
             if (string.IsNullOrEmpty(entityProcessId) || string.IsNullOrEmpty(blobUrl) || string.IsNullOrEmpty(entityName))

@@ -13,6 +13,7 @@ namespace EinAutomation.Api.Services.Interfaces
         Task<bool> NotifyFailureScreenshotUploadToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName, string? accountId = null, string? entityId = null, string? caseId = null);
 
         Task<bool> NotifyEinLetterToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName, string? accountId = null, string? entityId = null, string? caseId = null);
+        Task<bool> NotifySubmissionUploadToSalesforceAsync(string? entityProcessId, string? blobUrl, string? entityName, string? accountId = null, string? entityId = null, string? caseId = null);
         
         bool IsAuthenticated { get; }
         string? InstanceUrl { get; }

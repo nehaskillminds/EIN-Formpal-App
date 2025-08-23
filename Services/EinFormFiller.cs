@@ -30,6 +30,7 @@ namespace EinAutomation.Api.Services
         protected List<Dictionary<string, object?>> ConsoleLogs { get; } = new List<Dictionary<string, object?>>();
         protected bool ConfirmationUploaded { get; set; } = false;
         protected string? _downloadDirectory;
+        protected string? ChromeDownloadDirectory { get; set; }
 
         public EinFormFiller(
             ILogger<EinFormFiller> logger,
@@ -43,6 +44,120 @@ namespace EinAutomation.Api.Services
             _salesforceClient = salesforceClient;
             Headless = headless;
             Timeout = timeout;
+        }
+
+        public async Task<(string? BlobUrl, bool Success)> CaptureSubmissionPageAsPdf(CaseData? data, CancellationToken cancellationToken)
+        {
+            try
+            {
+                if (Driver == null)
+                {
+                    _logger.LogError("Cannot capture submission PDF - Driver is null");
+                    return (null, false);
+                }
+
+                // Generate a clean filename
+                var cleanName = Regex.Replace(data?.EntityName ?? "UnknownEntity", @"[^\w\-]", "").Replace(" ", "");
+                var blobName = $"EntityProcess/{data?.RecordId ?? "unknown"}/{cleanName}-ID-EINSubmission.pdf";
+
+                // Wait for page to be fully loaded
+                await WaitForPageLoadAsync(cancellationToken);
+
+                string? blobUrl = null;
+
+                // --- Primary PDF generation using Chrome CDP ---
+                if (Driver is ChromeDriver chromeDriver)
+                {
+                    try
+                    {
+                        var printOptions = new Dictionary<string, object>();
+
+                        var result = chromeDriver.ExecuteCdpCommand("Page.printToPDF", printOptions);
+
+                        if (result is Dictionary<string, object> resultDict && resultDict.ContainsKey("data"))
+                        {
+                            var dataObj = resultDict["data"];
+                            string? base64Pdf = null;
+                            if (dataObj is string s)
+                            {
+                                base64Pdf = s;
+                            }
+                            else if (dataObj is System.Text.Json.JsonElement jsonEl && jsonEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                            {
+                                base64Pdf = jsonEl.GetString();
+                            }
+
+                            if (!string.IsNullOrEmpty(base64Pdf))
+                            {
+                                var pdfBytes = Convert.FromBase64String(base64Pdf);
+
+                                // Use legacy UploadBytesToBlob signature: (bytes, blobName, contentType, ct) -> blob URL
+                                var uploadedUrl = await _blobStorageService.UploadBytesToBlob(
+                                    pdfBytes,
+                                    blobName,
+                                    "application/pdf",
+                                    cancellationToken
+                                );
+
+                                if (!string.IsNullOrEmpty(uploadedUrl))
+                                {
+                                    blobUrl = uploadedUrl;
+                                    _logger.LogInformation("Uploaded EINSubmission PDF via CDP to blob: {BlobUrl}", blobUrl);
+                                }
+                                else
+                                {
+                                    _logger.LogWarning("CDP PDF upload returned empty URL, will try fallback");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "CDP PDF generation failed, trying fallback");
+                    }
+                }
+
+                // --- Fallback via HTML2PDF ---
+                if (string.IsNullOrEmpty(blobUrl))
+                {
+                    var (fallbackUrl, success) = await CapturePageAsPdfHtml2PdfFallback(data, cancellationToken);
+                    if (success)
+                    {
+                        blobUrl = fallbackUrl;
+                        _logger.LogInformation("Uploaded EINSubmission PDF via fallback to blob: {BlobUrl}", blobUrl);
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(blobUrl))
+                {
+                    // Notify Salesforce (Content Migration)
+                    if (_salesforceClient != null)
+                    {
+                        var notified = await _salesforceClient.NotifySubmissionUploadToSalesforceAsync(
+                            data?.RecordId,
+                            blobUrl,
+                            data?.EntityName,
+                            data?.AccountId,
+                            data?.EntityId,
+                            data?.CaseId
+                        );
+
+                        if (!notified)
+                        {
+                            _logger.LogWarning("Salesforce notification for EINSubmission PDF upload failed.");
+                        }
+                    }
+
+                    return (blobUrl, true);
+                }
+
+                return (null, false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "CaptureSubmissionPageAsPdf failed.");
+                return (null, false);
+            }
         }
 
         public bool FillField(By locator, string? value, string label = "field")
@@ -354,10 +469,10 @@ private bool TryDirectClick(string radioId, string description, int timeoutSecon
 {
     try
     {
-        var radio = WaitHelper.WaitUntilClickable(Driver, By.Id(radioId), timeoutSeconds); // Assumes WaitUntilClickable accepts int
+        var radio = WaitHelper.WaitUntilClickable(Driver!, By.Id(radioId), timeoutSeconds); // Assumes WaitUntilClickable accepts int
         
         // Scroll into view before clicking
-        var js = (IJavaScriptExecutor)Driver;
+        var js = (IJavaScriptExecutor)Driver!;
         js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", radio);
         Thread.Sleep(200); // Brief pause for scroll completion
         
@@ -1465,83 +1580,94 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 {"filing_requirement", data.FilingRequirement ?? ""}
             };
         }
+________________________________________________________________________AKS DRIVER_______________________________________________
+public void InitializeDriver()
+{
+    try
+    {
+        LogSystemResources();
+        // Ensure HOME variable and Chrome data directories
+        var chromeHome = "/tmp/chrome-home";
+        Environment.SetEnvironmentVariable("HOME", chromeHome);
+        Directory.CreateDirectory(chromeHome);
+        var chromeDownloads = "/tmp/chrome-home/Downloads";
+        Directory.CreateDirectory(chromeDownloads);
+        var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+        Directory.CreateDirectory(chromeUserData);
+        
+        // Store the download directory path for PDF capture methods
+        ChromeDownloadDirectory = chromeDownloads;
+        
+        var options = new ChromeOptions
+        {
+            BinaryLocation = "/usr/bin/chromium",
+            AcceptInsecureCertificates = true
+        };
+        // Chromium runtime arguments
+        options.AddArgument($"--user-data-dir={chromeUserData}");
+        options.AddArgument("--headless=new");
+        options.AddArgument("--no-sandbox");
+        options.AddArgument("--disable-setuid-sandbox");
+        options.AddArgument("--disable-dev-shm-usage");
+        options.AddArgument("--disable-gpu");
+        options.AddArgument("--disable-software-rasterizer");
+        options.AddArgument("--disable-infobars");
+        options.AddArgument("--disable-blink-features=AutomationControlled");
+        options.AddArgument("--disable-extensions");
+        options.AddArgument("--no-first-run");
+        options.AddArgument("--no-default-browser-check");
+        options.AddArgument("--disable-background-networking");
+        options.AddArgument("--disable-sync");
+        options.AddArgument("--disable-default-apps");
+        options.AddArgument("--disable-translate");
+        options.AddArgument("--window-size=1920,1080");
+        options.AddArgument("--remote-debugging-port=9222");
+        options.AddArgument("--remote-debugging-address=0.0.0.0");
+        options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
+        // Route downloads into the dedicated HOME/Downloads directory
+        options.AddUserProfilePreference("download.default_directory", chromeDownloads);
+        options.AddUserProfilePreference("download.prompt_for_download", false);
+        options.AddUserProfilePreference("download.directory_upgrade", true);
+        options.AddUserProfilePreference("safebrowsing.enabled", true);
+        options.AddUserProfilePreference("plugins.always_open_pdf_externally", true);
+        options.AddUserProfilePreference("profile.default_content_setting_values.automatic_downloads", 1);
+        // ChromeDriver service configuration
+        var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName("/usr/bin/"), "chromedriver");
+        driverService.LogPath = "/tmp/chromedriver.log"; // Force a known path
+        driverService.EnableVerboseLogging = true;
+        driverService.SuppressInitialDiagnosticInformation = false;
+        Driver = new ChromeDriver(driverService, options);
+        Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
+        // Disable JS popups
+        ((IJavaScriptExecutor)Driver).ExecuteScript(@"
+            window.alert = function() { return true; };
+            window.confirm = function() { return true; };
+            window.prompt = function() { return null; };
+            window.open = function() { return null; };
+        ");
+        _logger.LogInformation("WebDriver initialized successfully with Chromium - Download directory: {DownloadDir}", chromeDownloads);
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError(ex, "Failed to initialize WebDriver");
+        LogChromeDriverDiagnostics();
+        throw;
+    }
+}
 
-// public void InitializeDriver()
-// {
-//     try
-//     {
-//         LogSystemResources();
-//         // Ensure HOME variable and Chrome data directories
-//         var chromeHome = "/tmp/chrome-home";
-//         Environment.SetEnvironmentVariable("HOME", chromeHome);
-//         Directory.CreateDirectory(chromeHome);
-//         var chromeDownloads = "/tmp/chrome-home/Downloads";
-//         Directory.CreateDirectory(chromeDownloads);
-//         var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-//         Directory.CreateDirectory(chromeUserData);
-//         var options = new ChromeOptions
-//         {
-//             BinaryLocation = "/usr/bin/chromium",
-//             AcceptInsecureCertificates = true
-//         };
-//         // Chromium runtime arguments
-//         options.AddArgument($"--user-data-dir={chromeUserData}");
-//         options.AddArgument("--headless=new");
-//         options.AddArgument("--no-sandbox");
-//         options.AddArgument("--disable-setuid-sandbox");
-//         options.AddArgument("--disable-dev-shm-usage");
-//         options.AddArgument("--disable-gpu");
-//         options.AddArgument("--disable-software-rasterizer");
-//         options.AddArgument("--disable-infobars");
-//         options.AddArgument("--disable-blink-features=AutomationControlled");
-//         options.AddArgument("--disable-extensions");
-//         options.AddArgument("--no-first-run");
-//         options.AddArgument("--no-default-browser-check");
-//         options.AddArgument("--disable-background-networking");
-//         options.AddArgument("--disable-sync");
-//         options.AddArgument("--disable-default-apps");
-//         options.AddArgument("--disable-translate");
-//         options.AddArgument("--window-size=1920,1080");
-//         options.AddArgument("--remote-debugging-port=9222");
-//         options.AddArgument("--remote-debugging-address=0.0.0.0");
-//         options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-//         // Route downloads into the dedicated HOME/Downloads directory
-//         options.AddUserProfilePreference("download.default_directory", chromeDownloads);
-//         options.AddUserProfilePreference("download.prompt_for_download", false);
-//         options.AddUserProfilePreference("download.directory_upgrade", true);
-//         options.AddUserProfilePreference("safebrowsing.enabled", true);
-//         options.AddUserProfilePreference("plugins.always_open_pdf_externally", true);
-//         options.AddUserProfilePreference("profile.default_content_setting_values.automatic_downloads", 1);
-//         // ChromeDriver service configuration
-//         var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName("/usr/bin/"), "chromedriver");
-//         driverService.LogPath = "/tmp/chromedriver.log"; // Force a known path
-//         driverService.EnableVerboseLogging = true;
-//         driverService.SuppressInitialDiagnosticInformation = false;
-//         Driver = new ChromeDriver(driverService, options);
-//         Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
-//         // Disable JS popups
-//         ((IJavaScriptExecutor)Driver).ExecuteScript(@"
-//             window.alert = function() { return true; };
-//             window.confirm = function() { return true; };
-//             window.prompt = function() { return null; };
-//             window.open = function() { return null; };
-//         ");
-//         _logger.LogInformation("WebDriver initialized successfully with Chromium");
-//     }
-//     catch (Exception ex)
-//     {
-//         _logger.LogError(ex, "Failed to initialize WebDriver");
-//         LogChromeDriverDiagnostics();
-//         throw;
-//     }
-// }
-
-// ________________________________________________________________________LOCAL DRIVER_______________________________________________
+________________________________________________________________________LOCAL DRIVER_______________________________________________
         public void InitializeDriver()
             {
                 try
                 {
                     LogSystemResources(); // You need to implement this
+                    
+                    // Create Chrome download directory for local testing
+                    var chromeDownloads = Path.Combine(Path.GetTempPath(), "chrome-downloads");
+                    Directory.CreateDirectory(chromeDownloads);
+                    
+                    // Store the download directory path for PDF capture methods
+                    ChromeDownloadDirectory = chromeDownloads;
                     
                     var options = new ChromeOptions();
                     // Set Chrome arguments
@@ -1553,12 +1679,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                     options.AddArgument("--disable-infobars");
                     options.AddArgument("--window-size=1920,1080");
                     options.AddArgument("--start-maximized");
-                    
-                 
-
-        
-
-                
                     
                     // Set Chrome preferences
                 var prefs = new Dictionary<string, object>
@@ -1576,9 +1696,9 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                     ["download.prompt_for_download"] = false,
                     ["download.directory_upgrade"] = true,
                     ["safebrowsing.enabled"] = true,
-
-                        
-                    };
+                    ["download.default_directory"] = chromeDownloads,
+                    ["profile.default_content_setting_values.automatic_downloads"] = 1
+                };
                     options.AddUserProfilePreference("prefs", prefs);
                     
                     // Use regular ChromeDriver with anti-detection options
@@ -1600,6 +1720,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                     ");
                     
                     Console.WriteLine("- WebDriver initialized successfully");
+                    _logger.LogInformation("WebDriver initialized successfully for local testing - Download directory: {DownloadDir}", chromeDownloads);
                 }
                 catch (Exception ex)
                 {

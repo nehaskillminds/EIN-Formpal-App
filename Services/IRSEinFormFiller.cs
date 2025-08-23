@@ -1010,18 +1010,17 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 }
                 
 
-                if (!SelectRadio("receiveonline", "Receive Online"))
+                if (!SelectRadio("DIGITALconfirmationLetterRadioInputid", "Receive Letter Digitally"))
                 {
                     CaptureBrowserLogs();
-                    throw new AutomationError("Failed to select Receive Online");
+                    throw new AutomationError("Failed to select Receive Letter digitally");
                 }
 
-                if (ClickButtonByAriaLabel("hkgkgkgkg", "Continue after receive EIN"))
-                {
+                
                     CaptureBrowserLogs();
 
-                        // Capture confirmation page using the base CapturePageAsPdf method
-                        var (blobUrl, success) = await CapturePageAsPdf(data, CancellationToken.None);
+                     // Capture confirmation page using the base CapturePageAsPdf method
+                    var (blobUrl, success) = await CapturePageAsPdf(data, CancellationToken.None);
 
                     if (success && !string.IsNullOrEmpty(blobUrl))
                     {
@@ -1031,13 +1030,9 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                     {
                             _logger.LogWarning("Failed to capture and upload confirmation page PDF");
                     }
-                }
-                else
-                {
-                    throw new AutomationError("Failed to continue after receive EIN selection");
-                }
+                
 
-                _logger.LogInformation("Form filled successfully");
+                _logger.LogInformation("Form filled successfully.");
             }
             catch (WebDriverTimeoutException ex)
             {
@@ -1165,21 +1160,20 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 try
                 {
                     Driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(Timeout);
-                    WaitHelper.WaitUntilExists(Driver, By.XPath("//input[@type='submit' and @name='submit' and @value='Begin Application >>']"), 10);
-                    _logger.LogInformation("Page loaded successfully");
+
+                    var beginAppButton = Driver.FindElements(By.XPath("//a[@id='anchor-ui-0']")).FirstOrDefault();
+                    if (beginAppButton != null && beginAppButton.Displayed && beginAppButton.Enabled)
+                    {
+                        beginAppButton.Click();
+                        _logger.LogInformation("Clicked 'Begin Application Now' button successfully");
+                    }
+
+                    // Always scroll after the first attempt
+                    ScrollToBottom();
                 }
                 catch (WebDriverTimeoutException)
                 {
-                    CaptureBrowserLogs();
-                    var pageSource = GetTruncatedPageSource();
-                    _logger.LogError($"Page load timeout. Current URL: {Driver?.Url ?? "N/A"}, Page source: {pageSource}");
-                    throw new AutomationError("Page load timeout", "Failed to locate Begin Application button");
-                }
-
-                if (!ClickButton(By.XPath("//input[@type='submit' and @name='submit' and @value='Begin Application >>']"), "Begin Application"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to click Begin Application", "Button click unsuccessful after retries");
+                    _logger.LogDebug("Failed to click Begin Application Now button");
                 }
 
                 try
@@ -1203,11 +1197,7 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                     throw new AutomationError("Failed to select Trusteeship entity type");
                 }
 
-                if (!ClickButtonByAriaLabel("Continue", "Continue after entity type"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after entity type");
-                }
+                
 
                 // Determine sub-type based on TrustType from payload
                 string subType;
@@ -1244,12 +1234,7 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                     throw new AutomationError("Failed to select Trusteeship sub-type");
                 }
 
-                if (!ClickButtonByAriaLabel("Continue", "Continue after sub-type"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after sub-type");
-                }
-                CaptureBrowserLogs();
+                
                 if (!ClickButtonByAriaLabel("Continue", "Continue after sub-type"))
                 {
                     CaptureBrowserLogs();
@@ -1257,21 +1242,21 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 }
                 CaptureBrowserLogs();
 
-                if (!FillField(By.XPath("//input[@id='responsiblePartyFirstName']"), (string?)defaults["first_name"] ?? string.Empty, "Responsible First Name"))
+                if (!FillField(By.XPath("//input[@id='responsibleFirstName']"), (string?)defaults["first_name"] ?? string.Empty, "Responsible First Name"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Responsible First Name");
                 }
                 CaptureBrowserLogs();
 
-                if (!string.IsNullOrEmpty((string?)defaults["middle_name"]) && !FillField(By.XPath("//input[@id='responsiblePartyMiddleName']"), (string?)defaults["middle_name"] ?? string.Empty, "Responsible Middle Name"))
+                if (!string.IsNullOrEmpty((string?)defaults["middle_name"]) && !FillField(By.XPath("//input[@id='responsibleMiddleName']"), (string?)defaults["middle_name"] ?? string.Empty, "Responsible Middle Name"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Responsible Middle Name");
                 }
                 CaptureBrowserLogs();
 
-                if (!FillField(By.XPath("//input[@id='responsiblePartyLastName']"), (string?)defaults["last_name"] ?? string.Empty, "Responsible Last Name"))
+                if (!FillField(By.XPath("//input[@id='responsibleLastName']"), (string?)defaults["last_name"] ?? string.Empty, "Responsible Last Name"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Responsible Last Name");
@@ -1280,53 +1265,37 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
 
                 var ssn = (string?)defaults["ssn_decrypted"] ?? string.Empty;
                 ssn = ssn.Replace("-", "");
-                if (!FillField(By.XPath("//input[@id='responsiblePartySSN3']"), ssn.Substring(0, 3), "SSN First 3"))
+                if (!FillField(By.XPath("//input[@id='responsibleSsn']"), ssn, "Responsible Party SSN"))
                 {
                     CaptureBrowserLogs();
-                    throw new AutomationError("Failed to fill SSN First 3");
-                }
-                CaptureBrowserLogs();
-                if (!FillField(By.XPath("//input[@id='responsiblePartySSN2']"), ssn.Substring(3, 2), "SSN Middle 2"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to fill SSN Middle 2");
-                }
-                CaptureBrowserLogs();
-                if (!FillField(By.XPath("//input[@id='responsiblePartySSN4']"), ssn.Substring(5), "SSN Last 4"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to fill SSN Last 4");
+                    throw new AutomationError("Failed to fill Responsible Party SSN");
                 }
                 CaptureBrowserLogs();
 
-                if (!ClickButton(By.XPath("//input[@type='submit' and @name='Submit2' and contains(@value, 'Continue >>')]"), "Continue after SSN"))
-                {
-                    CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after SSN");
-                }
-                CaptureBrowserLogs();
+                
 
-                FillField(By.XPath("//input[@id='responsiblePartyFirstName']"), (string?)defaults["first_name"] ?? string.Empty, "Clear & Fill First Name");
+                FillField(By.XPath("//input[@id='trusteeFirstName']"), (string?)defaults["first_name"] ?? string.Empty, "Clear & Fill First Name");
                 CaptureBrowserLogs();
                 if (!string.IsNullOrEmpty((string?)defaults["middle_name"]))
                 {
-                    FillField(By.XPath("//input[@id='responsiblePartyMiddleName']"), (string?)defaults["middle_name"] ?? string.Empty, "Responsible Middle Name");
+                    FillField(By.XPath("//input[@id='trusteeMiddleName']"), (string?)defaults["middle_name"] ?? string.Empty, "Responsible Middle Name");
                 }
                 CaptureBrowserLogs();
-                FillField(By.XPath("//input[@id='responsiblePartyLastName']"), (string?)defaults["last_name"] ?? string.Empty, "Clear & Fill Last Name");
+                FillField(By.XPath("//input[@id='trusteeLastName']"), (string?)defaults["last_name"] ?? string.Empty, "Clear & Fill Last Name");
                 CaptureBrowserLogs();
 
-                if (!SelectRadio("iamsole", "I Am Sole"))
+                if (!SelectRadio("yesentityRoleRadioInputid", "I Am Sole"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to select I Am Sole");
                 }
                 CaptureBrowserLogs();
-                if (!ClickButton(By.XPath("//input[@type='submit' and @name='Submit' and contains(@value, 'Continue >>')]"), "Continue after I Am Sole"))
+                if (!ClickButtonByAriaLabel("Continue", "Continue after sub-type"))
                 {
                     CaptureBrowserLogs();
-                    throw new AutomationError("Failed to continue after I Am Sole");
+                    throw new AutomationError("Failed to continue after sub-type");
                 }
+                
                 CaptureBrowserLogs();
 
                 // Trusteeship entity: update mailing address usage
@@ -1334,7 +1303,7 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                     ? data.MailingAddress[0]
                     : new Dictionary<string, string>();
 
-                if (!FillField(By.XPath("//input[@id='mailingAddressStreet']"),
+                if (!FillField(By.XPath("//input[@id='mailingStreet']"),
                     CleanAddress(mailingAddressDict.GetValueOrDefault("mailingStreet", "")),
                     "Mailing Street"))
                 {
@@ -1343,7 +1312,7 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 }
                 CaptureBrowserLogs();
 
-                if (!FillField(By.XPath("//input[@id='mailingAddressCity']"),
+                if (!FillField(By.XPath("//input[@id='mailingCity']"),
                     CleanAddress(mailingAddressDict.GetValueOrDefault("mailingCity", "")),
                     "Mailing City"))
                 {
@@ -1352,8 +1321,8 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 }
                 CaptureBrowserLogs();
 
-                if (!FillField(By.XPath("//input[@id='mailingAddressState']"),
-                    CleanAddress(mailingAddressDict.GetValueOrDefault("mailingState", "")),
+                if (!SelectDropdown(By.Id("mailingState"),
+                    NormalizeState(mailingAddressDict.GetValueOrDefault("mailingState", "")),
                     "Mailing State"))
                 {
                     CaptureBrowserLogs();
@@ -1361,7 +1330,7 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 }
                 CaptureBrowserLogs();
 
-                if (!FillField(By.XPath("//input[@id='mailingAddressPostalCode']"),
+                if (!FillField(By.XPath("//input[@id='mailingZipCode']"),
                     CleanAddress(mailingAddressDict.GetValueOrDefault("mailingZip", "")),
                     "Zip"))
                 {
@@ -1370,7 +1339,7 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 }
                 CaptureBrowserLogs();
 
-                if (!FillField(By.XPath("//input[@id='internationalPhoneNumber']"), (string?)defaults["phone"] ?? string.Empty, "Phone Number"))
+                if (!FillField(By.XPath("//input[@id='thePhone']"), (string?)defaults["phone"] ?? string.Empty, "Phone Number"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Phone Number");
@@ -1630,11 +1599,11 @@ if (!ClickButtonByAriaLabel("Continue", "Continue"))
                 // _______________________________________________final submit deployment ________________________________
 
                 // // 5. Continue to EIN Letter
-                // if (!ClickButton(By.XPath("//input[@type='submit' and @value='Submit']"), 
-                //         "Final Continue before EIN download"))
-                //     {
-                //         throw new Exception("Failed to click final Continue button before EIN");
-                //     }
+                //  if (!ClickButtonByAriaLabel("Submit EIN Request", "Submit EIN Request"))
+                // {
+                //     CaptureBrowserLogs();
+                //     throw new AutomationError("Failed to click final Submit Button before EIN");
+                // }
 
 
                 // (einNumber, pdfAzureUrl, success) = await FinalSubmit(data, jsonData, CancellationToken.None);
@@ -1752,28 +1721,68 @@ private async Task<(string? EinNumber, string? PdfAzureUrl, bool Success)> Final
         // Try to extract EIN
         try
         {
-            var einElement = WaitHelper.WaitUntilExists(Driver, By.CssSelector("td[align='left'] > b"), 10);
+            // Primary: Use robust XPath targeting the table row where first cell label is "EIN assigned"
+            // Matches structure like:
+            // <tr><td><b>EIN assigned</b></td><td><b>39-3859100</b></td></tr>
+            var xpath = "//tr[normalize-space(td[1]/b)='EIN assigned']/td[2]//b";
+            var einElement = WaitHelper.WaitUntilExists(Driver, By.XPath(xpath), 10);
             var einText = einElement?.Text?.Trim();
 
             if (!string.IsNullOrEmpty(einText) && Regex.IsMatch(einText, @"^\d{2}-\d{7}$"))
             {
                 einNumber = einText;
+                _logger.LogInformation("Extracted EIN using labeled row XPath: {Ein}", einNumber);
+            }
+            else
+            {
+                // Secondary within primary: look for any bold element that looks like an EIN anywhere on the page
+                var anyEinBold = Driver.FindElements(By.XPath("//b[contains(text(), '-')]")).FirstOrDefault();
+                var anyText = anyEinBold?.Text?.Trim();
+                if (!string.IsNullOrEmpty(anyText) && Regex.IsMatch(anyText, @"^\d{2}-\d{7}$"))
+                {
+                    einNumber = anyText;
+                    _logger.LogInformation("Extracted EIN using generic bold match: {Ein}", einNumber);
+                }
             }
         }
         catch (Exception)
         {
-            _logger.LogWarning("Primary EIN extraction failed. Attempting fallback with HtmlAgilityPack.");
+            _logger.LogWarning("Primary EIN extraction failed. Attempting fallbacks (HAP + Regex scan).");
+            // Fallback 1: HtmlAgilityPack with labeled row
             var doc = new HtmlDocument();
             doc.LoadHtml(Driver.PageSource);
 
-            var einNode = doc.DocumentNode.SelectSingleNode("//td/b[contains(text(), '-')]");
-            if (einNode != null)
+            var labeledNode = doc.DocumentNode.SelectSingleNode("//tr[normalize-space(td[1]/b)='EIN assigned']/td[2]//b");
+            var text = labeledNode?.InnerText?.Trim();
+            if (!string.IsNullOrEmpty(text) && Regex.IsMatch(text, @"^\d{2}-\d{7}$"))
             {
-                var einText = einNode.InnerText.Trim();
-                if (Regex.IsMatch(einText, @"^\d{2}-\d{7}$"))
+                einNumber = text;
+                _logger.LogInformation("Extracted EIN via HAP labeled row: {Ein}", einNumber);
+            }
+            else
+            {
+                // Fallback 2: any bold containing pattern
+                var einNode = doc.DocumentNode.SelectSingleNode("//b[contains(text(), '-')]");
+                if (einNode != null)
                 {
-                    einNumber = einText;
-                    _logger.LogInformation("Extracted EIN via fallback: {EinNumber}", einNumber);
+                    text = einNode.InnerText.Trim();
+                    if (Regex.IsMatch(text, @"^\d{2}-\d{7}$"))
+                    {
+                        einNumber = text;
+                        _logger.LogInformation("Extracted EIN via HAP generic bold match: {Ein}", einNumber);
+                    }
+                }
+            }
+
+            // Fallback 3: Regex scan over the entire page source
+            if (string.IsNullOrEmpty(einNumber))
+            {
+                var page = Driver.PageSource ?? string.Empty;
+                var m = Regex.Match(page, @"\b\d{2}-\d{7}\b");
+                if (m.Success)
+                {
+                    einNumber = m.Value;
+                    _logger.LogInformation("Extracted EIN via full page regex scan: {Ein}", einNumber);
                 }
             }
         }
@@ -1814,61 +1823,152 @@ private async Task<(string? EinNumber, string? PdfAzureUrl, bool Success)> Final
         try
         {
             _logger.LogInformation("EIN successfully extracted: {EinNumber}. Starting PDF capture...", einNumber);
-            
-            // Execute both PDF capture methods regardless of success/failure for comprehensive coverage
-            _logger.LogInformation("🚀 Starting comprehensive EIN Letter PDF capture using both methods...");
-            
-            string? pdfAzureUrl2 = null;
-            bool success1 = false;
-            bool success2 = false;
-
-            // Method 1: TryDownloadEinLetterPdfWithSelenium (All 18 methods)
+            // Capture and upload the EIN Submission PDF (content migration)
             try
             {
-                _logger.LogInformation("📥 METHOD SET 1: Executing TryDownloadEinLetterPdfWithSelenium (18 methods)...");
-                var pdfBytes1 = await TryDownloadEinLetterPdfWithSelenium(einNumber, data, jsonData, cancellationToken);
-                if (pdfBytes1 != null && pdfBytes1.Length > 0)
+                var (submissionBlobUrl, submissionSuccess) = await CaptureSubmissionPageAsPdf(data, cancellationToken);
+                if (submissionSuccess && !string.IsNullOrEmpty(submissionBlobUrl))
                 {
-                    success1 = true;
-                    _logger.LogInformation("✅ METHOD SET 1 SUCCESS: TryDownloadEinLetterPdfWithSelenium returned {FileSize} bytes", pdfBytes1.Length);
+                    _logger.LogInformation("✅ EIN Submission PDF captured and uploaded: {BlobUrl}", submissionBlobUrl);
                 }
                 else
                 {
-                    _logger.LogWarning("❌ METHOD SET 1 FAILED: TryDownloadEinLetterPdfWithSelenium returned null or empty");
+                    _logger.LogWarning("⚠️ EIN Submission PDF capture/upload did not succeed. Continuing with EIN Letter capture.");
+                }
+            }
+            catch (Exception subEx)
+            {
+                _logger.LogWarning(subEx, "EIN Submission PDF capture encountered an exception (continuing)...");
+            }
+            
+            // Execute comprehensive EIN Letter PDF capture using three methods
+            _logger.LogInformation("🚀 Starting comprehensive EIN Letter PDF capture using three methods...");
+            
+            // Method 1: AggressiveScan
+            bool success1 = false;
+            byte[]? pdfBytes1 = null;
+            try
+            {
+                _logger.LogInformation("📥 METHOD SET 1: Executing AggressiveScan...");
+                pdfBytes1 = await TryAggressiveScan(cancellationToken);
+                if (pdfBytes1 != null && pdfBytes1.Length > 0)
+                {
+                    success1 = true;
+                    _logger.LogInformation("✅ METHOD SET 1 SUCCESS: AggressiveScan returned {FileSize} bytes", pdfBytes1.Length);
+                }
+                else
+                {
+                    _logger.LogWarning("❌ METHOD SET 1 FAILED: AggressiveScan returned null or empty");
                 }
             }
             catch (Exception ex1)
             {
-                _logger.LogError(ex1, "❌ METHOD SET 1 EXCEPTION: TryDownloadEinLetterPdfWithSelenium failed with exception");
+                _logger.LogError(ex1, "❌ METHOD SET 1 EXCEPTION: AggressiveScan failed with exception");
             }
 
-            // Method 2: CapturePageAsPdfEnhanced (Additional enhanced capture methods)
+            // Method 2: TryDownloadPdfToTemporaryDirectory (Direct PDF storage in temporary directory)
+            bool success2 = false;
+            byte[]? pdfBytes2 = null;
             try
             {
-                _logger.LogInformation("📸 METHOD SET 2: Executing CapturePageAsPdfEnhanced...");
-                var (blobUrl2, success2Result) = await CapturePageAsPdfEnhanced(data, cancellationToken);
-                if (success2Result && !string.IsNullOrEmpty(blobUrl2))
+                _logger.LogInformation("📥 METHOD SET 2: Executing TryDownloadPdfToTemporaryDirectory...");
+                pdfBytes2 = await TryDownloadPdfToTemporaryDirectory(cancellationToken);
+                if (pdfBytes2 != null && pdfBytes2.Length > 0)
                 {
-                    pdfAzureUrl2 = blobUrl2;
                     success2 = true;
-                    _logger.LogInformation("✅ METHOD SET 2 SUCCESS: CapturePageAsPdfEnhanced - {BlobUrl}", blobUrl2);
+                    _logger.LogInformation("✅ METHOD SET 2 SUCCESS: TryDownloadPdfToTemporaryDirectory returned {FileSize} bytes", pdfBytes2.Length);
                 }
                 else
                 {
-                    _logger.LogWarning("❌ METHOD SET 2 FAILED: CapturePageAsPdfEnhanced returned no valid result");
+                    _logger.LogWarning("❌ METHOD SET 2 FAILED: TryDownloadPdfToTemporaryDirectory returned null or empty");
                 }
             }
             catch (Exception ex2)
             {
-                _logger.LogError(ex2, "❌ METHOD SET 2 EXCEPTION: CapturePageAsPdfEnhanced failed with exception");
+                _logger.LogError(ex2, "❌ METHOD SET 2 EXCEPTION: TryDownloadPdfToTemporaryDirectory failed with exception");
+            }
+
+            // Method 3: TryBase64PdfExtraction (Base64 PDF extraction with temporary storage)
+            bool success3 = false;
+            byte[]? pdfBytes3 = null;
+            try
+            {
+                _logger.LogInformation("📥 METHOD SET 3: Executing TryBase64PdfExtraction...");
+                pdfBytes3 = await TryBase64PdfExtraction(cancellationToken);
+                if (pdfBytes3 != null && pdfBytes3.Length > 0)
+                {
+                    success3 = true;
+                    _logger.LogInformation("✅ METHOD SET 3 SUCCESS: TryBase64PdfExtraction returned {FileSize} bytes", pdfBytes3.Length);
+                }
+                else
+                {
+                    _logger.LogWarning("❌ METHOD SET 3 FAILED: TryBase64PdfExtraction returned null or empty");
+                }
+            }
+            catch (Exception ex3)
+            {
+                _logger.LogError(ex3, "❌ METHOD SET 3 EXCEPTION: TryBase64PdfExtraction failed with exception");
             }
 
             // Determine overall success and primary PDF URL for response
-            bool overallSuccess = success1 || success2;
+            bool overallSuccess = success1 || success2 || success3;
             if (overallSuccess)
             {
-                // Prefer the first successful method's result, or use the second if first failed
-                pdfAzureUrl = pdfAzureUrl2 ?? "PDF captured via selenium methods";
+                // Determine which method succeeded and get the PDF bytes
+                byte[]? successfulPdfBytes = null;
+                string? successfulMethod = null;
+                
+                if (success1 && pdfBytes1 != null)
+                {
+                    successfulPdfBytes = pdfBytes1;
+                    successfulMethod = "AggressiveScan";
+                }
+                else if (success2 && pdfBytes2 != null)
+                {
+                    successfulPdfBytes = pdfBytes2;
+                    successfulMethod = "TryDownloadPdfToTemporaryDirectory";
+                }
+                else if (success3 && pdfBytes3 != null)
+                {
+                    successfulPdfBytes = pdfBytes3;
+                    successfulMethod = "TryBase64PdfExtraction";
+                }
+
+                // Save PDF bytes to blob storage if we have them from new methods
+                if (successfulPdfBytes != null && successfulPdfBytes.Length > 0)
+                {
+                    try
+                    {
+                        // Create the clean entity name exactly like requested
+                        var cleanName = Regex.Replace(data?.EntityName ?? "unknown", @"[^\w\-]", "").Replace(" ", "");
+                        
+                        // Use the requested blob naming structure: EntityProcess/{RecordId}/{cleanName}-ID-EINLetter.pdf
+                        var blobName = $"EntityProcess/{data?.RecordId ?? "unknown"}/{cleanName}-ID-EINLetter.pdf";
+                        
+                        var blobUrl = await _blobStorageService.UploadEinLetterPdf(
+                            successfulPdfBytes,
+                            blobName,
+                            "application/pdf",
+                            data?.AccountId,
+                            data?.EntityId,
+                            data?.CaseId,
+                            cancellationToken);
+                        
+                        if (!string.IsNullOrEmpty(blobUrl))
+                        {
+                            pdfAzureUrl = blobUrl;
+                            _logger.LogInformation("💾 PDF saved to blob storage: {BlobName} - {BlobUrl}", blobName, blobUrl);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("⚠️ Failed to save PDF to blob storage");
+                        }
+                    }
+                    catch (Exception blobEx)
+                    {
+                        _logger.LogWarning("Error saving PDF to blob storage: {Message}", blobEx.Message);
+                    }
+                }
                 
                 // Save JSON data with successful EIN
                 if (jsonData != null)
@@ -1906,12 +2006,14 @@ private async Task<(string? EinNumber, string? PdfAzureUrl, bool Success)> Final
                     _logger.LogWarning("Failed to notify Salesforce about success: {Message}", sfEx.Message);
                 }
 
-                _logger.LogInformation("✅ EIN Letter PDF successfully captured and uploaded. Method 1 success: {Success1}, Method 2 success: {Success2}", success1, success2);
+                _logger.LogInformation("✅ EIN Letter PDF successfully captured and uploaded. Method 1 success: {Success1}, Method 2 success: {Success2}, Method 3 success: {Success3}, Successful method: {SuccessfulMethod}", 
+                    success1, success2, success3, successfulMethod);
                 return (einNumber, pdfAzureUrl, true);
             }
             else
             {
-                _logger.LogError("Both PDF capture methods failed despite successful EIN extraction. Method 1 success: {Success1}, Method 2 success: {Success2}", success1, success2);
+                _logger.LogError("All PDF capture methods failed despite successful EIN extraction. Method 1 success: {Success1}, Method 2 success: {Success2}, Method 3 success: {Success3}", 
+                    success1, success2, success3);
                 throw new Exception("All PDF capture methods failed or returned empty content");
             }
         }
@@ -1974,8 +2076,7 @@ private async Task<(string? EinNumber, string? PdfAzureUrl, bool Success)> Final
     }
 }
 
-private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumber, CaseData? data, Dictionary<string, object>? jsonData, CancellationToken cancellationToken)
-// Note: einNumber and jsonData parameters are intentionally unused in this method but kept for interface compatibility
+// TryDownloadEinLetterPdfWithSelenium method removed - replaced with simplified methods
 {
     string? downloadDir = null;
     string? downloadsFolder = null;
@@ -2024,43 +2125,38 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
             await Task.Delay(5000, cancellationToken);
         }
         
-        // Find and click the PDF link
-        var pdfLinkElement = await FindPdfLinkElement();
-        if (pdfLinkElement == null)
+        // Find and click the IRS EIN confirmation letter button
+        var downloadButton = await FindIrsEinConfirmationButton();
+        if (downloadButton == null)
         {
-            _logger.LogWarning("PDF link not found initially, waiting longer and retrying...");
+            _logger.LogWarning("IRS EIN confirmation button not found initially, waiting longer and retrying...");
             await Task.Delay(5000, cancellationToken); // Wait longer
-            pdfLinkElement = await FindPdfLinkElement();
+            downloadButton = await FindIrsEinConfirmationButton();
             
-            if (pdfLinkElement == null)
+            if (downloadButton == null)
             {
-                throw new Exception("PDF link element not found after all attempts");
+                throw new Exception("IRS EIN confirmation button not found after all attempts");
             }
         }
         
-        _logger.LogInformation("Found PDF link element: {Href}", pdfLinkElement.GetAttribute("href"));
-        _logger.LogInformation("PDF link onclick: {OnClick}", pdfLinkElement.GetAttribute("onclick"));
-        _logger.LogInformation("PDF link text: {Text}", pdfLinkElement.Text);
+        _logger.LogInformation("Found IRS EIN confirmation button: {Href}", downloadButton.GetAttribute("href"));
+        _logger.LogInformation("Button onclick: {OnClick}", downloadButton.GetAttribute("onclick"));
+        _logger.LogInformation("Button text: {Text}", downloadButton.Text);
+        _logger.LogInformation("Button aria-label: {AriaLabel}", downloadButton.GetAttribute("aria-label"));
 
         _logger.LogInformation("Starting simplified PDF download - Triggering downloads then scanning with Method 8 & 10a");
         
         // DOWNLOAD TRIGGERS: These methods trigger downloads to the downloads folder
         // The actual PDF processing will be done only by Method 8 (AggressiveScan) and Method 10a (RecentDownloadsScan)
         
-        // Download Trigger 1: Click PDF link to trigger download
-        _logger.LogInformation("=== DOWNLOAD TRIGGER 1: Clicking PDF link ===");
+        // Download Trigger 1: Click IRS EIN confirmation button to trigger download
+        _logger.LogInformation("=== DOWNLOAD TRIGGER 1: Clicking IRS EIN confirmation button ===");
         try
         {
-            var clicked = await TryClickPdfLink(pdfLinkElement);
-            if (clicked)
-            {
-                _logger.LogInformation("✅ DOWNLOAD TRIGGER 1 SUCCESS: Successfully clicked PDF link");
-                await Task.Delay(5000, cancellationToken); // Wait for download to start
-            }
-            else
-            {
-                _logger.LogWarning("❌ DOWNLOAD TRIGGER 1 FAILED: Could not click PDF link");
-            }
+            // Click the download button directly
+            downloadButton.Click();
+            _logger.LogInformation("✅ DOWNLOAD TRIGGER 1 SUCCESS: Successfully clicked IRS EIN confirmation button");
+            await Task.Delay(5000, cancellationToken); // Wait for download to start
         }
         catch (Exception ex)
         {
@@ -2176,42 +2272,55 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
             _logger.LogWarning("❌ DOWNLOAD TRIGGER 3 EXCEPTION: {Message}", ex.Message);
         }
         
-        // Download Trigger 4: JavaScript openPDFNoticeWindow execution (STALE-ELEMENT-SAFE)
-        _logger.LogInformation("=== DOWNLOAD TRIGGER 4: Execute openPDFNoticeWindow JavaScript ===");
+        // Download Trigger 4: Click IRS EIN confirmation button via JavaScript (STALE-ELEMENT-SAFE)
+        _logger.LogInformation("=== DOWNLOAD TRIGGER 4: Click IRS EIN confirmation button via JavaScript ===");
         try
         {
             // Use fresh element detection to avoid stale element reference
             var jsExecutor = (IJavaScriptExecutor?)Driver;
-            var openPDFScript = @"
-                // Find PDF link with openPDFNoticeWindow
-                var pdfLinks = document.querySelectorAll('a[onclick*=""openPDFNoticeWindow""]');
-                var executed = false;
+            var clickButtonScript = @"
+                // Find IRS EIN confirmation button
+                var buttonSelectors = [
+                    'a[@id=""anchor-ui-0"" and contains(@aria-label, ""Download EIN confirmation Letter"")]',
+                    'a[contains(@class, ""irs-button"") and contains(@aria-label, ""Download EIN confirmation Letter"")]',
+                    'a[contains(@class, ""EinAssignment_confirmationLetterButtonMargin"")]',
+                    'a[contains(@aria-label, ""Download EIN confirmation Letter [PDF]"")]',
+                    'a[contains(text(), ""Download EIN confirmation Letter"")]',
+                    'a[@id=""anchor-ui-0""]',
+                    'a[contains(@class, ""irs-button"") and contains(@class, ""buttonStyle"")]'
+                ];
                 
-                for (var i = 0; i < pdfLinks.length; i++) {
-                    var onclick = pdfLinks[i].getAttribute('onclick');
-                    if (onclick && onclick.includes('openPDFNoticeWindow')) {
-                        try {
-                            eval(onclick);
-                            executed = true;
-                            break;
-                        } catch(e) {
-                            console.log('Failed to execute onclick:', e);
+                var clicked = false;
+                
+                buttonSelectors.forEach(function(selector) {
+                    if (!clicked) {
+                        var buttons = document.querySelectorAll(selector);
+                        for (var i = 0; i < buttons.length; i++) {
+                            if (buttons[i].display !== 'none' && buttons[i].offsetParent !== null) {
+                                try {
+                                    buttons[i].click();
+                                    clicked = true;
+                                    break;
+                                } catch(e) {
+                                    console.log('Failed to click button:', e);
+                                }
+                            }
                         }
                     }
-                }
+                });
                 
-                return executed ? 'EXECUTED' : 'NOT_FOUND';
+                return clicked ? 'CLICKED' : 'NOT_FOUND';
             ";
             
-            var result = jsExecutor?.ExecuteScript(openPDFScript);
-            if (result?.ToString() == "EXECUTED")
+            var result = jsExecutor?.ExecuteScript(clickButtonScript);
+            if (result?.ToString() == "CLICKED")
             {
                 await Task.Delay(3000, cancellationToken);
-                _logger.LogInformation("✅ DOWNLOAD TRIGGER 4 SUCCESS: Executed openPDFNoticeWindow JavaScript");
+                _logger.LogInformation("✅ DOWNLOAD TRIGGER 4 SUCCESS: Clicked IRS EIN confirmation button via JavaScript");
             }
             else
             {
-                _logger.LogInformation("⏭️ DOWNLOAD TRIGGER 4 SKIPPED: No openPDFNoticeWindow onclick found");
+                _logger.LogInformation("⏭️ DOWNLOAD TRIGGER 4 SKIPPED: No IRS EIN confirmation button found");
             }
         }
         catch (Exception ex)
@@ -2219,57 +2328,64 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
             _logger.LogWarning("❌ DOWNLOAD TRIGGER 4 EXCEPTION: {Message}", ex.Message);
         }
         
-        // Download Trigger 5: Open PDF link in new window/tab (STALE-ELEMENT-SAFE)
-        _logger.LogInformation("=== DOWNLOAD TRIGGER 5: Open PDF in new window ===");
+        // Download Trigger 5: Click IRS EIN confirmation button in new window/tab (STALE-ELEMENT-SAFE)
+        _logger.LogInformation("=== DOWNLOAD TRIGGER 5: Click IRS EIN confirmation button in new window ===");
         try
         {
-            // Use JavaScript to find and open PDF links to avoid stale element reference
+            // Use JavaScript to find and click the IRS EIN confirmation button
             var jsExecutor = (IJavaScriptExecutor?)Driver;
-            var openNewWindowScript = @"
-                // Find PDF links and open in new window
-                var pdfSelectors = [
-                    'a[href*="".pdf""]',
-                    'a[href*=""CP575""]',
-                    'a[onclick*=""openPDFNoticeWindow""]',
-                    'a[onclick*=""pdf""]'
+            var clickButtonNewWindowScript = @"
+                // Find IRS EIN confirmation button and click it
+                var buttonSelectors = [
+                    'a[@id=""anchor-ui-0"" and contains(@aria-label, ""Download EIN confirmation Letter"")]',
+                    'a[contains(@class, ""irs-button"") and contains(@aria-label, ""Download EIN confirmation Letter"")]',
+                    'a[contains(@class, ""EinAssignment_confirmationLetterButtonMargin"")]',
+                    'a[contains(@aria-label, ""Download EIN confirmation Letter [PDF]"")]',
+                    'a[contains(text(), ""Download EIN confirmation Letter"")]',
+                    'a[@id=""anchor-ui-0""]',
+                    'a[contains(@class, ""irs-button"") and contains(@class, ""buttonStyle"")]'
                 ];
                 
-                var opened = false;
-                var baseUrl = window.location.origin;
+                var clicked = false;
                 
-                pdfSelectors.forEach(function(selector) {
-                    if (!opened) {
-                        var links = document.querySelectorAll(selector);
-                        for (var i = 0; i < links.length; i++) {
-                            var href = links[i].href || links[i].getAttribute('href');
-                            if (href) {
-                                if (href.startsWith('/')) {
-                                    href = baseUrl + href;
-                                }
+                buttonSelectors.forEach(function(selector) {
+                    if (!clicked) {
+                        var buttons = document.querySelectorAll(selector);
+                        for (var i = 0; i < buttons.length; i++) {
+                            if (buttons[i].display !== 'none' && buttons[i].offsetParent !== null) {
                                 try {
-                                    window.open(href, '_blank');
-                                    opened = true;
-                                    break;
+                                    // Try to open in new window first
+                                    var href = buttons[i].href || buttons[i].getAttribute('href');
+                                    if (href) {
+                                        window.open(href, '_blank');
+                                        clicked = true;
+                                        break;
+                                    } else {
+                                        // If no href, just click the button
+                                        buttons[i].click();
+                                        clicked = true;
+                                        break;
+                                    }
                                 } catch(e) {
-                                    console.log('Failed to open window:', e);
+                                    console.log('Failed to click button:', e);
                                 }
                             }
                         }
                     }
                 });
                 
-                return opened ? 'OPENED' : 'NOT_FOUND';
+                return clicked ? 'CLICKED' : 'NOT_FOUND';
             ";
             
-            var result = jsExecutor?.ExecuteScript(openNewWindowScript);
-            if (result?.ToString() == "OPENED")
+            var result = jsExecutor?.ExecuteScript(clickButtonNewWindowScript);
+            if (result?.ToString() == "CLICKED")
             {
                 await Task.Delay(5000, cancellationToken);
-                _logger.LogInformation("✅ DOWNLOAD TRIGGER 5 SUCCESS: Opened PDF in new window");
+                _logger.LogInformation("✅ DOWNLOAD TRIGGER 5 SUCCESS: Clicked IRS EIN confirmation button in new window");
             }
             else
             {
-                _logger.LogWarning("❌ DOWNLOAD TRIGGER 5 FAILED: No PDF links found");
+                _logger.LogWarning("❌ DOWNLOAD TRIGGER 5 FAILED: No IRS EIN confirmation button found");
             }
         }
         catch (Exception ex)
@@ -2681,6 +2797,425 @@ private async Task<byte[]?> TryDownloadEinLetterPdfWithSelenium(string? einNumbe
         }
     }
 }
+
+        /// <summary>
+        /// Enhanced PDF download method using temporary download directory (from PdfDownloadTestController)
+        /// </summary>
+        private async Task<byte[]?> TryDownloadPdfToTemporaryDirectory(CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("🔽 METHOD: Download PDF to Chrome download directory");
+                
+                // Use the Chrome download directory configured during WebDriver initialization
+                if (string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    _logger.LogError("ChromeDownloadDirectory is not configured");
+                    return null;
+                }
+                
+                _logger.LogInformation("Using Chrome download directory: {DownloadDir}", ChromeDownloadDirectory);
+
+                // Clear any existing files in the download directory
+                if (Directory.Exists(ChromeDownloadDirectory))
+                {
+                    foreach (var file in Directory.GetFiles(ChromeDownloadDirectory))
+                    {
+                        System.IO.File.Delete(file);
+                    }
+                }
+
+                // Find and click the IRS EIN confirmation letter button
+                var downloadButton = await FindIrsEinConfirmationButton();
+                if (downloadButton == null)
+                {
+                    _logger.LogWarning("IRS EIN confirmation button not found");
+                    return null;
+                }
+
+                // Click the download button
+                _logger.LogInformation("Clicking IRS EIN confirmation letter button");
+                downloadButton.Click();
+                await Task.Delay(3000, cancellationToken);
+
+                // Wait for download to complete
+                var maxWaitTime = 30000; // 30 seconds
+                var waitInterval = 1000; // 1 second
+                var waited = 0;
+                
+                _logger.LogInformation("Waiting for PDF download to complete...");
+                while (waited < maxWaitTime)
+                {
+                    await Task.Delay(waitInterval, cancellationToken);
+                    waited += waitInterval;
+
+                    if (Directory.Exists(ChromeDownloadDirectory))
+                    {
+                        var pdfFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.pdf");
+                        var crdownloadFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.crdownload");
+                        
+                        // If we have PDF files and no partial downloads, we're done
+                        if (pdfFiles.Length > 0 && crdownloadFiles.Length == 0)
+                        {
+                            var downloadedFilePath = pdfFiles[0];
+                            var fileBytes = await System.IO.File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
+                            
+                            if (IsValidPdf(fileBytes))
+                            {
+                                _logger.LogInformation("✅ PDF downloaded successfully to Chrome download directory: {FilePath}, Size: {Size} bytes", 
+                                    downloadedFilePath, fileBytes.Length);
+                                
+                                // Clean up the downloaded file (but keep the directory)
+                                try
+                                {
+                                    System.IO.File.Delete(downloadedFilePath);
+                                    _logger.LogInformation("Cleaned up downloaded PDF file");
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning("Failed to clean up downloaded file: {Message}", ex.Message);
+                                }
+                                
+                                return fileBytes;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Downloaded file is not a valid PDF: {FilePath}", downloadedFilePath);
+                            }
+                        }
+                    }
+                }
+
+                _logger.LogWarning("Download timeout - no valid PDF found in Chrome download directory");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in TryDownloadPdfToTemporaryDirectory");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Base64 PDF extraction method (from PdfDownloadTestController)
+        /// </summary>
+        private async Task<byte[]?> TryBase64PdfExtraction(CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("🔽 METHOD: Base64 PDF extraction");
+                
+                // Use the Chrome download directory configured during WebDriver initialization
+                if (string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    _logger.LogError("ChromeDownloadDirectory is not configured");
+                    return null;
+                }
+                
+                _logger.LogInformation("Using Chrome download directory for base64 extraction: {DownloadDir}", ChromeDownloadDirectory);
+
+                // Clear any existing files in the download directory
+                if (Directory.Exists(ChromeDownloadDirectory))
+                {
+                    foreach (var file in Directory.GetFiles(ChromeDownloadDirectory))
+                    {
+                        System.IO.File.Delete(file);
+                    }
+                }
+
+                // Find and click the IRS EIN confirmation letter button
+                var downloadButton = await FindIrsEinConfirmationButton();
+                if (downloadButton == null)
+                {
+                    _logger.LogWarning("IRS EIN confirmation button not found for base64 extraction");
+                    return null;
+                }
+
+                // Click the download button
+                _logger.LogInformation("Clicking IRS EIN confirmation letter button for base64 extraction");
+                downloadButton.Click();
+                await Task.Delay(3000, cancellationToken);
+
+                // Wait for download to complete
+                var maxWaitTime = 30000; // 30 seconds
+                var waitInterval = 1000; // 1 second
+                var waited = 0;
+                
+                _logger.LogInformation("Waiting for PDF download to complete for base64 conversion...");
+                while (waited < maxWaitTime)
+                {
+                    await Task.Delay(waitInterval, cancellationToken);
+                    waited += waitInterval;
+
+                    if (Directory.Exists(ChromeDownloadDirectory))
+                    {
+                        var pdfFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.pdf");
+                        var crdownloadFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.crdownload");
+                        
+                        // If we have PDF files and no partial downloads, we're done
+                        if (pdfFiles.Length > 0 && crdownloadFiles.Length == 0)
+                        {
+                            var downloadedFilePath = pdfFiles[0];
+                            var fileBytes = await System.IO.File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
+                            
+                            if (IsValidPdf(fileBytes))
+                            {
+                                // Convert PDF bytes to base64 string
+                                var base64String = Convert.ToBase64String(fileBytes);
+                                
+                                // Create base64 file path
+                                var base64FilePath = Path.Combine(Path.GetTempPath(), $"pdf_base64_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.txt");
+                                
+                                // Store base64 string in file
+                                await System.IO.File.WriteAllTextAsync(base64FilePath, base64String, cancellationToken);
+                                
+                                _logger.LogInformation("✅ PDF downloaded and converted to base64");
+                                _logger.LogInformation("Original PDF: {PdfPath}, Size: {PdfSize} bytes", downloadedFilePath, fileBytes.Length);
+                                _logger.LogInformation("Base64 file: {Base64Path}, Size: {Base64Size} characters", base64FilePath, base64String.Length);
+                                
+                                // Clean up the downloaded file (but keep the directory)
+                                try
+                                {
+                                    System.IO.File.Delete(downloadedFilePath);
+                                    System.IO.File.Delete(base64FilePath);
+                                    _logger.LogInformation("Cleaned up downloaded PDF file and base64 file");
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning("Failed to clean up downloaded files: {Message}", ex.Message);
+                                }
+                                
+                                return fileBytes;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Downloaded file is not a valid PDF: {FilePath}", downloadedFilePath);
+                            }
+                        }
+                    }
+                }
+
+                _logger.LogWarning("Download timeout - no valid PDF found in Chrome download directory for base64 conversion");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in TryBase64PdfExtraction");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Find the specific IRS EIN confirmation letter button
+        /// </summary>
+        private async Task<IWebElement?> FindIrsEinConfirmationButton()
+        {
+            var buttonSelectors = new[]
+            {
+                // Exact match for the IRS EIN confirmation button
+                "//a[@id='anchor-ui-0' and contains(@aria-label, 'Download EIN confirmation Letter')]",
+                "//a[contains(@class, 'irs-button') and contains(@aria-label, 'Download EIN confirmation Letter')]",
+                "//a[contains(@class, 'EinAssignment_confirmationLetterButtonMargin')]",
+                "//a[contains(@aria-label, 'Download EIN confirmation Letter [PDF]')]",
+                
+                // Text-based selectors
+                "//a[contains(text(), 'Download EIN confirmation Letter')]",
+                "//a[contains(text(), 'Download EIN confirmation Letter [PDF]')]",
+                
+                // Class-based selectors
+                "//a[contains(@class, 'buttonStyle') and contains(@class, 'EinAssignment_confirmationLetterButtonMargin')]",
+                "//a[contains(@class, 'irs-button--active') and contains(@class, 'EinAssignment_fixButtonContrast')]",
+                
+                // Fallback selectors
+                "//a[@id='anchor-ui-0']",
+                "//a[contains(@class, 'irs-button') and contains(@class, 'buttonStyle')]",
+                "//a[contains(@class, 'EinAssignment_confirmationLetterButtonMargin')]"
+            };
+
+            int maxRetries = 3;
+            for (int retry = 0; retry < maxRetries; retry++)
+            {
+                _logger.LogInformation("IRS EIN confirmation button search attempt {Attempt} of {MaxRetries}", retry + 1, maxRetries);
+                
+                foreach (var selector in buttonSelectors)
+                {
+                    try
+                    {
+                        if (Driver != null)
+                        {
+                            var element = WaitHelper.WaitUntilVisible(Driver, By.XPath(selector), 5);
+                            if (element != null && element.Displayed && element.Enabled)
+                            {
+                                _logger.LogInformation("Found IRS EIN confirmation button using selector: {Selector}", selector);
+                                _logger.LogDebug("Button href: {Href}", element.GetAttribute("href"));
+                                _logger.LogDebug("Button text: {Text}", element.Text);
+                                _logger.LogDebug("Button aria-label: {AriaLabel}", element.GetAttribute("aria-label"));
+                                return element;
+                            }
+                        }
+                    }
+                    catch (Exception selectorEx)
+                    {
+                        _logger.LogDebug("Selector {Selector} failed: {Message}", selector, selectorEx.Message);
+                    }
+                }
+
+                if (retry < maxRetries - 1)
+                {
+                    _logger.LogWarning("IRS EIN confirmation button not found, waiting and retrying...");
+                    await Task.Delay(3000);
+                    
+                    // Try to scroll to ensure the element is in view
+                    try
+                    {
+                        var jsExecutor = (IJavaScriptExecutor?)Driver;
+                        jsExecutor?.ExecuteScript("window.scrollTo(0, document.body.scrollHeight);");
+                        await Task.Delay(1000);
+                        jsExecutor?.ExecuteScript("window.scrollTo(0, 0);");
+                        await Task.Delay(1000);
+                    }
+                    catch (Exception scrollEx)
+                    {
+                        _logger.LogDebug("Scroll attempt failed: {Message}", scrollEx.Message);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Aggressive scan method to find and download PDF files from the system
+        /// </summary>
+        private async Task<byte[]?> TryAggressiveScan(CancellationToken cancellationToken)
+        {
+            try
+            {
+                _logger.LogInformation("🔍 METHOD: AggressiveScan - Scanning for PDF files");
+                
+                // Use the Chrome download directory configured during WebDriver initialization
+                if (string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    _logger.LogError("ChromeDownloadDirectory is not configured");
+                    return null;
+                }
+                
+                _logger.LogInformation("Using Chrome download directory for aggressive scan: {DownloadDir}", ChromeDownloadDirectory);
+
+                // Clear any existing files in the download directory
+                if (Directory.Exists(ChromeDownloadDirectory))
+                {
+                    foreach (var file in Directory.GetFiles(ChromeDownloadDirectory))
+                    {
+                        System.IO.File.Delete(file);
+                    }
+                }
+
+                // Find and click the IRS EIN confirmation letter button
+                var downloadButton = await FindIrsEinConfirmationButton();
+                if (downloadButton == null)
+                {
+                    _logger.LogWarning("IRS EIN confirmation button not found for aggressive scan");
+                    return null;
+                }
+
+                // Click the download button
+                _logger.LogInformation("Clicking IRS EIN confirmation button for aggressive scan");
+                downloadButton.Click();
+                await Task.Delay(3000, cancellationToken);
+
+                // Wait for download to complete
+                var maxWaitTime = 30000; // 30 seconds
+                var waitInterval = 1000; // 1 second
+                var waited = 0;
+                
+                _logger.LogInformation("Waiting for PDF download to complete for aggressive scan...");
+                while (waited < maxWaitTime)
+                {
+                    await Task.Delay(waitInterval, cancellationToken);
+                    waited += waitInterval;
+
+                    if (Directory.Exists(ChromeDownloadDirectory))
+                    {
+                        var pdfFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.pdf");
+                        var crdownloadFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.crdownload");
+                        
+                        // If we have PDF files and no partial downloads, we're done
+                        if (pdfFiles.Length > 0 && crdownloadFiles.Length == 0)
+                        {
+                            var downloadedFilePath = pdfFiles[0];
+                            var fileBytes = await System.IO.File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
+                            
+                            if (IsValidPdf(fileBytes))
+                            {
+                                _logger.LogInformation("✅ PDF found via aggressive scan: {FilePath}, Size: {Size} bytes", 
+                                    downloadedFilePath, fileBytes.Length);
+                                
+                                // Clean up the downloaded file (but keep the directory)
+                                try
+                                {
+                                    System.IO.File.Delete(downloadedFilePath);
+                                    _logger.LogInformation("Cleaned up downloaded PDF file");
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning("Failed to clean up downloaded file: {Message}", ex.Message);
+                                }
+                                
+                                return fileBytes;
+                            }
+                            else
+                            {
+                                _logger.LogWarning("Downloaded file is not a valid PDF: {FilePath}", downloadedFilePath);
+                            }
+                        }
+                    }
+                }
+
+                _logger.LogWarning("Aggressive scan timeout - no valid PDF found in Chrome download directory");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in TryAggressiveScan");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Extract base64 PDF from HTML content (from PdfDownloadTestController)
+        /// </summary>
+        private static string? ExtractBase64PdfFromHtml(string htmlContent)
+        {
+            try
+            {
+                var patterns = new[]
+                {
+                    @"data:application/pdf;base64,([A-Za-z0-9+/=]+)",
+                    @"application/pdf.*?([A-Za-z0-9+/=]{1000,})",
+                    @"%PDF.*?([A-Za-z0-9+/=]{1000,})"
+                };
+                
+                foreach (var pattern in patterns)
+                {
+                    var match = Regex.Match(htmlContent, pattern, RegexOptions.IgnoreCase);
+                    if (match.Success && match.Groups.Count > 1)
+                    {
+                        var base64Data = match.Groups[1].Value;
+                        if (base64Data.Length > 1000 && Regex.IsMatch(base64Data, @"^[A-Za-z0-9+/=]+$"))
+                        {
+                            return base64Data;
+                        }
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Ignore extraction errors
+            }
+            
+            return null;
+        }
 
 private async Task<byte[]?> TryWindowBasedPdfCapture(IWebElement pdfLinkElement, CancellationToken cancellationToken)
 {
@@ -7739,16 +8274,28 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
             // Method 1: Fast Selenium-based extraction (most reliable)
             try
             {
-                var refElement = Driver != null ? WaitHelper.WaitUntilExists(Driver, By.XPath("//p[contains(text(), 'reference number')]"), 3) : null;
-                if (refElement != null)
+                // Prefer paragraphs inside the failure alert area, but fall back to any paragraph
+                var xpaths = new[]
                 {
-                    var refText = refElement.Text;
-                    var refMatch = Regex.Match(refText, @"reference number\s+(\d+)", RegexOptions.IgnoreCase);
-                    if (refMatch.Success)
+                    "//section[contains(@class,'section-alert-red')]//p[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reference number')]",
+                    "//ul[contains(@class,'ErrorAlertBox_ulNoBullets') or contains(@class,'ErrorAlertBox_ulNoBullets__') ]//p[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reference number')]",
+                    "//p[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reference number')]"
+                };
+
+                foreach (var xp in xpaths)
+                {
+                    var refElement = Driver != null ? WaitHelper.WaitUntilExists(Driver, By.XPath(xp), 3) : null;
+                    if (refElement != null)
                     {
-                        referenceNumber = refMatch.Groups[1].Value;
-                        _logger.LogInformation("✅ FAST EXTRACTION: Reference number via Selenium: {ReferenceNumber}", referenceNumber);
-                        return referenceNumber; // Early termination
+                        var refText = refElement.Text ?? string.Empty;
+                        // Accept formats like "reference number: 101." or "reference number 101"
+                        var refMatch = Regex.Match(refText, @"reference\s*number\s*[:#-]?\s*(\d{1,8})", RegexOptions.IgnoreCase);
+                        if (refMatch.Success)
+                        {
+                            referenceNumber = refMatch.Groups[1].Value;
+                            _logger.LogInformation("✅ FAST EXTRACTION: Reference number via Selenium XPath {XPath}: {ReferenceNumber}", xp, referenceNumber);
+                            return referenceNumber; // Early termination
+                        }
                     }
                 }
             }
@@ -7762,9 +8309,9 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
             {
                 var patterns = new[]
                 {
-                    @"reference number\s+(\d+)",
-                    @"reference number[:\s]*(\d+)",
-                    @"mention reference number\s+(\d+)"
+                    @"reference\s*number\s*[:#-]?\s*(\d{1,8})",
+                    @"mention\s+reference\s+number\s*[:#-]?\s*(\d{1,8})",
+                    @"reference\s*#\s*(\d{1,8})"
                 };
 
                 foreach (var pattern in patterns)
@@ -7784,7 +8331,7 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
             {
                 try
                 {
-                    var boldElements = Driver?.FindElements(By.XPath("//p[contains(text(), 'reference number')]//b"));
+                    var boldElements = Driver?.FindElements(By.XPath("(//section[contains(@class,'section-alert-red')]//p|//p)[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reference number')]//b"));
                     if (boldElements != null && boldElements.Count > 0)
                     {
                         foreach (var boldElement in boldElements)
@@ -7828,7 +8375,7 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
                             
                             // Look for any text containing reference number pattern
                             var allText = document.body.textContent || document.body.innerText || '';
-                            var match = allText.match(/reference number\s+(\d+)/i);
+                            var match = allText.match(/reference\s*number\s*[:#-]?\s*(\d{1,8})/i);
                             return match ? match[1] : null;
                         }
                         return findReferenceNumberFast();
@@ -7857,12 +8404,12 @@ private async Task<string?> WaitForDownloadCompleteMultiLocation(string download
                     doc.LoadHtml(pageSource);
 
                     // Search text nodes containing "reference number"
-                    var textNodes = doc.DocumentNode.SelectNodes("//text()[contains(., 'reference number')]");
+                    var textNodes = doc.DocumentNode.SelectNodes("//text()[contains(translate(., 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'reference number')]");
                     if (textNodes != null)
                     {
                         foreach (var node in textNodes)
                         {
-                            var match = Regex.Match(node.InnerText, @"reference number\s+(\d+)", RegexOptions.IgnoreCase);
+                            var match = Regex.Match(node.InnerText, @"reference\s*number\s*[:#-]?\s*(\d{1,8})", RegexOptions.IgnoreCase);
                             if (match.Success)
                             {
                                 referenceNumber = match.Groups[1].Value;
