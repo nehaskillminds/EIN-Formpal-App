@@ -1,12 +1,6 @@
-using EinAutomation.Api.Models;
 using EinAutomation.Api.Services.Interfaces;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
-using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using System.Collections.Generic;
-using System;
 
 namespace EinAutomation.Api.Controllers
 {

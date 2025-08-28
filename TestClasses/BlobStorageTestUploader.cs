@@ -1,12 +1,5 @@
-using EinAutomation.Api.Models;
 using EinAutomation.Api.Services.Interfaces;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace EinAutomation.Api.TestClasses
 {

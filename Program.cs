@@ -1,15 +1,10 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using EinAutomation.Api.Infrastructure;
 using EinAutomation.Api.Services;
 using EinAutomation.Api.Options;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
-using System.Text;
-using EinAutomation.Api.Services.Interfaces; 
+using EinAutomation.Api.Services.Interfaces;
+
 
 namespace EinAutomation.Api
 {
@@ -25,8 +20,8 @@ namespace EinAutomation.Api
             
             // AKS-specific configurations
             var isAKS = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Production" || 
-                       Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Staging" ||
-                       !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KUBERNETES_SERVICE_HOST"));
+                        Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Staging" ||
+                        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KUBERNETES_SERVICE_HOST"));
             
             // Enable Swagger based on environment
             if (isAKS)
@@ -83,21 +78,16 @@ namespace EinAutomation.Api
                     // More restrictive CORS for production AKS
                     options.AddPolicy("AKSPolicy", corsBuilder =>
                     {
-                        var allowedOrigins = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS")?.Split(',') 
-                                           ?? new[] { "*" }; // Fallback to allow all if not configured
+                        var allowedOrigins =    Environment.GetEnvironmentVariable("ALLOWED_ORIGINS")?.Split(',') 
+                                                ?? ["*"]; // Fallback to allow all if not configured
                         
                         if (allowedOrigins.Contains("*"))
                         {
-                            corsBuilder.AllowAnyOrigin()
-                                      .AllowAnyMethod()
-                                      .AllowAnyHeader();
+                            corsBuilder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
                         }
                         else
                         {
-                            corsBuilder.WithOrigins(allowedOrigins)
-                                      .AllowAnyMethod()
-                                      .AllowAnyHeader()
-                                      .AllowCredentials();
+                            corsBuilder.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader().AllowCredentials();
                         }
                     });
                 }
@@ -106,9 +96,7 @@ namespace EinAutomation.Api
                     // Permissive CORS for local development
                     options.AddPolicy("AllowAll", corsBuilder =>
                     {
-                        corsBuilder.AllowAnyOrigin()
-                                  .AllowAnyMethod()
-                                  .AllowAnyHeader();
+                        corsBuilder.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
                     });
                 }
             });
@@ -143,7 +131,6 @@ namespace EinAutomation.Api
             builder.Services.AddSingleton<IFormDataMapper, FormDataMapper>();
             builder.Services.AddHttpClient<ISalesforceClient, SalesforceClient>();
             builder.Services.AddSingleton<IErrorMessageExtractionService, ErrorMessageExtractionService>();
-
 
             // Add configuration for Key Vault - Enhanced for AKS
             var environment = builder.Environment.EnvironmentName;

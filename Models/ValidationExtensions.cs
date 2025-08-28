@@ -1,11 +1,6 @@
 // ValidationExtensions.cs
-using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
 using System.Text.RegularExpressions;
-using EinAutomation.Api.Models;
-using EinAutomation.Api.Services.Interfaces;
 
 namespace EinAutomation.Api.Models;
 

@@ -1,14 +1,7 @@
 using EinAutomation.Api.Models;
 using EinAutomation.Api.Services.Interfaces;
-using Microsoft.Extensions.Logging;
-using Polly;
 using Polly.Contrib.WaitAndRetry;
-using System;
-using System.Collections.Generic;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Linq;
 
 #nullable enable
 
@@ -54,18 +47,18 @@ namespace EinAutomation.Api.Services
             try
             {
                 await _salesforceClient.InitializeSalesforceAuthAsync();
-                var (automationSuccess, errorMessage, automationPdfUrl) = await _formFiller.RunAutomation(data, jsonData);
+                var (automationSuccess, errorMessage, automationPdfUrl) = await _formFiller.RunAutomation(data, jsonData!);
                 await _blobStorageService.UploadJsonData(jsonData.ToDictionary(kvp => kvp.Key, kvp => kvp.Value ?? new object()), data);
 
                 if (!automationSuccess)
                 {
                     _logger.LogWarning($"Automation failed for record_id: {data.RecordId}. Message: {errorMessage}");
                     jsonData["response_status"] = "fail";
-                    string errorMsg = null;
+                    string errorMsg ;
                     if (_formFiller is IRSEinFormFiller irsFiller && irsFiller.Driver != null)
                         errorMsg = _errorMessageExtractionService.ExtractErrorMessage(irsFiller.Driver);
                     else
-                        errorMsg = _errorMessageExtractionService.ExtractErrorMessage(errorMessage);
+                        errorMsg = _errorMessageExtractionService.ExtractErrorMessage(errorMessage!);
                     // Only set a fallback error message if not already set
                     if (!jsonData.ContainsKey("error_message") || string.IsNullOrWhiteSpace(jsonData["error_message"] as string))
                     {

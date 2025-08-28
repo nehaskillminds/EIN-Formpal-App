@@ -1,4 +1,3 @@
-using System.Threading.Tasks;
 using OpenQA.Selenium;
 
 namespace EinAutomation.Api.Services.Interfaces

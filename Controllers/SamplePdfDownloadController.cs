@@ -1,7 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using System.Threading;
-using System.Threading.Tasks;
 using EinAutomation.Api.TestClasses;
 
 namespace EinAutomation.Api.Controllers;
@@ -23,6 +20,7 @@ public class SamplePdfDownloadController : ControllerBase
         var logger = _loggerFactory.CreateLogger<SamplePdfDownloadTest>();
         var test = new SamplePdfDownloadTest(logger);
         await test.RunAllAsync(ct);
+        
         return Ok(new { message = "Test completed. Check logs for results." });
     }
 }

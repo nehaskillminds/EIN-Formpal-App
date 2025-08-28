@@ -1,8 +1,5 @@
 
 using OpenQA.Selenium;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using EinAutomation.Api.Models;
 
 namespace EinAutomation.Api.Services.Interfaces
@@ -46,6 +43,6 @@ namespace EinAutomation.Api.Services.Interfaces
         Dictionary<string, object?> GetDefaults(CaseData? data);
 
         // Browser
-        void InitializeDriver();
+        void InitializeDriver(bool useProxy, string? proxyHost, int? proxyPort, string? proxyUsername, string? proxyPassword, string recordId);
     }
 }

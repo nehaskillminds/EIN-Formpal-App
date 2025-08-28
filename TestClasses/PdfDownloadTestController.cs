@@ -1,18 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using System.Text;
-using System.IO;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
-using SeleniumExtras.WaitHelpers;
 
 namespace EinAutomation.Api.Controllers
 {
@@ -78,18 +70,18 @@ namespace EinAutomation.Api.Controllers
 					Summary = $"{summary.SuccessCount}/{summary.TotalCount} strategies succeeded ({summary.SuccessRate:F1}%)",
 					BestResult = summary.BestResult == null ? null : new
 					{
-						Method = summary.BestResult.Method,
-						Url = summary.BestResult.Url,
-						FileSize = summary.BestResult.FileSize
+						summary.BestResult.Method,
+						summary.BestResult.Url,
+						summary.BestResult.FileSize
 					},
 					Results = results.Select(r => new
 					{
-						Method = r.Method,
-						Success = r.Success,
-						Details = r.Details,
-						FileSize = r.FileSize,
-						Url = r.Url,
-						ActualDownloadUrl = r.ActualDownloadUrl
+						r.Method,
+						r.Success,
+						r.Details,
+						r.FileSize,
+						r.Url,
+						r.ActualDownloadUrl
 					})
 				});
 			}
@@ -112,7 +104,7 @@ namespace EinAutomation.Api.Controllers
 				{
 					["DownloadDirectory"] = DownloadDirectory ?? "null",
 					["DownloadDirectoryExists"] = Directory.Exists(DownloadDirectory),
-					["DownloadDirectoryWritable"] = await TestDirectoryWriteAccess(DownloadDirectory),
+					["DownloadDirectoryWritable"] = await TestDirectoryWriteAccess(DownloadDirectory!),
 					["ChromePreferences"] = await GetChromeDownloadPreferences(),
 					["CurrentUrl"] = Driver?.Url ?? "null",
 					["PageTitle"] = Driver?.Title ?? "null"
@@ -134,11 +126,13 @@ namespace EinAutomation.Api.Controllers
 						document.body.removeChild(link);
 						return 'Download link created and clicked';
 					";
-					
-					var result = ((IJavaScriptExecutor)Driver).ExecuteScript(script);
+
+					var jsExecutor = Driver as IJavaScriptExecutor;
+					var result = jsExecutor!.ExecuteScript(script);
+
 					await Task.Delay(5000); // Wait for download
 					
-					var filesAfterDownload = Directory.GetFiles(DownloadDirectory);
+					var filesAfterDownload = Directory.GetFiles(DownloadDirectory!);
 					
 					testInfo["JavaScriptResult"] = result?.ToString() ?? "null";
 					testInfo["FilesAfterDownload"] = filesAfterDownload.Select(Path.GetFileName).ToArray();
@@ -208,8 +202,8 @@ namespace EinAutomation.Api.Controllers
 					Directory.CreateDirectory(directory);
 				}
 				
-				var testFile = Path.Combine(directory, $"test_write_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.txt");
-				await System.IO.File.WriteAllTextAsync(testFile, "test");
+				var testFile = Path.Combine(directory, $"test_write_{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}.txt");				
+				await System.IO.File.WriteAllTextAsync(testFile, "test");				
 				var exists = System.IO.File.Exists(testFile);
 				System.IO.File.Delete(testFile);
 				return exists;
@@ -220,7 +214,7 @@ namespace EinAutomation.Api.Controllers
 			}
 		}
 		
-		private async Task<object> GetChromeDownloadPreferences()
+		private Task<object> GetChromeDownloadPreferences()
 		{
 			try
 			{
@@ -230,13 +224,13 @@ namespace EinAutomation.Api.Controllers
 						downloadPromptForDownload: window.chrome?.downloads?.promptForDownload || 'Not available'
 					};
 				";
-				
-				var result = ((IJavaScriptExecutor)Driver).ExecuteScript(script);
-				return result ?? "JavaScript execution failed";
+
+				var result = Driver!.ExecuteScript(script);
+				return Task.FromResult(result ?? "JavaScript execution failed");
 			}
 			catch (Exception ex)
 			{
-				return $"Error: {ex.Message}";
+				return Task.FromResult<object>($"Error: {ex.Message}");
 			}
 		}
 
@@ -246,12 +240,12 @@ namespace EinAutomation.Api.Controllers
 			try
 			{
 				LogSystemResources();
-				
+
 				// Determine if we're on Windows or Linux
 				var isWindows = Environment.OSVersion.Platform == PlatformID.Win32NT;
-				
+
 				string chromeHome, chromeDownloads, chromeUserData;
-				
+
 				if (isWindows)
 				{
 					// Windows paths - use temp directory with chrome-home structure
@@ -266,15 +260,16 @@ namespace EinAutomation.Api.Controllers
 					chromeDownloads = "/tmp/chrome-home/Downloads";
 					chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
 				}
-				
+
 				// Create directories - same pattern as EinFormFiller.cs
 				Directory.CreateDirectory(chromeHome);
 				Directory.CreateDirectory(chromeDownloads);
 				Directory.CreateDirectory(chromeUserData);
+
 				DownloadDirectory = chromeDownloads;
-				
+
 				var options = new ChromeOptions();
-				
+
 				// Set binary location based on OS
 				if (isWindows)
 				{
@@ -285,8 +280,8 @@ namespace EinAutomation.Api.Controllers
 						@"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
 						@"C:\Users\{0}\AppData\Local\Google\Chrome\Application\chrome.exe".Replace("{0}", Environment.UserName)
 					};
-					
-					var chromePath = chromePaths.FirstOrDefault(path => System.IO.File.Exists(path));
+
+					var chromePath = chromePaths.FirstOrDefault(System.IO.File.Exists);
 					if (!string.IsNullOrEmpty(chromePath))
 					{
 						options.BinaryLocation = chromePath;
@@ -297,9 +292,9 @@ namespace EinAutomation.Api.Controllers
 					// Linux Chrome binary
 					options.BinaryLocation = "/usr/bin/chromium";
 				}
-				
+
 				options.AcceptInsecureCertificates = true;
-				
+
 				// Chromium runtime arguments - same as EinFormFiller.cs
 				options.AddArgument($"--user-data-dir={chromeUserData}");
 				// Remove headless for visible browser as requested
@@ -322,7 +317,7 @@ namespace EinAutomation.Api.Controllers
 				options.AddArgument("--remote-debugging-port=9222");
 				options.AddArgument("--remote-debugging-address=0.0.0.0");
 				options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-				
+
 				// Route downloads into the dedicated HOME/Downloads directory - same as EinFormFiller.cs
 				options.AddUserProfilePreference("download.default_directory", chromeDownloads);
 				options.AddUserProfilePreference("download.prompt_for_download", false);
@@ -330,28 +325,28 @@ namespace EinAutomation.Api.Controllers
 				options.AddUserProfilePreference("safebrowsing.enabled", true);
 				options.AddUserProfilePreference("plugins.always_open_pdf_externally", true);
 				options.AddUserProfilePreference("profile.default_content_setting_values.automatic_downloads", 1);
-				
+
 				// Enhanced debugging: Log Chrome preferences
 				_logger.LogInformation("Chrome download preferences configured:");
 				_logger.LogInformation("  - download.default_directory: {DownloadDir}", chromeDownloads);
 				_logger.LogInformation("  - download.prompt_for_download: false");
 				_logger.LogInformation("  - plugins.always_open_pdf_externally: true");
 				_logger.LogInformation("  - profile.default_content_setting_values.automatic_downloads: 1");
-				
+
 				// Additional preferences to ensure downloads work
 				options.AddUserProfilePreference("download.open_pdf_in_system_reader", false);
 				options.AddUserProfilePreference("download.directory_upgrade", true);
 				options.AddUserProfilePreference("safebrowsing.enabled", false);
 				options.AddUserProfilePreference("safebrowsing.disable_download_protection", true);
-				
+
 				// Force Chrome to use the download directory
 				options.AddArgument($"--download-directory={chromeDownloads}");
 				options.AddArgument("--disable-web-security");
 				options.AddArgument("--allow-running-insecure-content");
-				
+
 				// ChromeDriver service configuration
 				ChromeDriverService driverService;
-				
+
 				if (isWindows)
 				{
 					// On Windows, try to use the default service or find chromedriver.exe
@@ -369,13 +364,13 @@ namespace EinAutomation.Api.Controllers
 							Path.Combine(Environment.CurrentDirectory, "drivers", "chromedriver.exe"),
 							@"C:\chromedriver\chromedriver.exe"
 						};
-						
+
 						var chromedriverPath = chromedriverPaths.FirstOrDefault(path => System.IO.File.Exists(path));
 						if (string.IsNullOrEmpty(chromedriverPath))
 						{
 							throw new InvalidOperationException("ChromeDriver not found. Please ensure chromedriver.exe is in the PATH or in the application directory.");
 						}
-						
+
 						driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName(chromedriverPath), Path.GetFileName(chromedriverPath));
 					}
 				}
@@ -384,27 +379,29 @@ namespace EinAutomation.Api.Controllers
 					// Linux ChromeDriver service - same as EinFormFiller.cs
 					driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName("/usr/bin/"), "chromedriver");
 				}
-				
+
 				// Set log path based on OS
 				var logPath = isWindows ? Path.Combine(Path.GetTempPath(), "chromedriver.log") : "/tmp/chromedriver.log";
 				driverService.LogPath = logPath;
 				driverService.EnableVerboseLogging = true;
 				driverService.SuppressInitialDiagnosticInformation = false;
-				
+
 				Driver = new ChromeDriver(driverService, options);
 				Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
-				
+
 				// Disable JS popups
-				((IJavaScriptExecutor)Driver).ExecuteScript(@"
+				Driver.ExecuteScript(@"
 					window.alert = function() { return true; };
 					window.confirm = function() { return true; };
 					window.prompt = function() { return null; };
 					window.open = function() { return null; };
 				");
-				
+
 				_logger.LogInformation("WebDriver initialized successfully with Chrome/Chromium");
 				_logger.LogInformation("Download directory created at: {DownloadDirectory}", DownloadDirectory);
-				
+
+				await Task.CompletedTask;
+
 				// Wait 15 seconds for manual captcha solving
 				// _logger.LogInformation("Waiting 15 seconds for manual captcha solving...");
 				// await Task.Delay(15000);

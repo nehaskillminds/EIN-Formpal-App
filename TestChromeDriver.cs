@@ -1,8 +1,4 @@
-using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
-using Microsoft.Extensions.Logging;
-using System;
-using System.IO;
 
 namespace EinAutomation.Api
 {

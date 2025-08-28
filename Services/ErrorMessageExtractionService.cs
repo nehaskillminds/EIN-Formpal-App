@@ -1,5 +1,4 @@
 using EinAutomation.Api.Services.Interfaces;
-using Microsoft.Extensions.Logging;
 using OpenQA.Selenium;
 using System.Text.RegularExpressions;
 

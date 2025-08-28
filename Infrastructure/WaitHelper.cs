@@ -6,7 +6,7 @@ namespace EinAutomation.Api.Infrastructure
 {
     public static class WaitHelper
     {
-        public static IWebElement WaitUntilVisible(IWebDriver driver, By locator, int timeoutSeconds = 10)
+        public static IWebElement? WaitUntilVisible(IWebDriver driver, By locator, int timeoutSeconds = 10)
         {
             var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(timeoutSeconds));
             return wait.Until(d =>
@@ -16,7 +16,7 @@ namespace EinAutomation.Api.Infrastructure
             });
         }
 
-        public static IWebElement WaitUntilClickable(IWebDriver driver, By locator, int timeoutSeconds = 10)
+        public static IWebElement? WaitUntilClickable(IWebDriver driver, By locator, int timeoutSeconds = 10)
         {
             var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(timeoutSeconds));
             return wait.Until(d =>
@@ -54,7 +54,7 @@ namespace EinAutomation.Api.Infrastructure
             });
         }
 
-        public static IWebElement WaitUntilExists(IWebDriver driver, By locator, int timeoutSeconds = 10)
+        public static IWebElement? WaitUntilExists(IWebDriver driver, By locator, int timeoutSeconds = 10)
         {
             var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(timeoutSeconds));
             return wait.Until(d =>

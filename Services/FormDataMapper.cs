@@ -1,8 +1,6 @@
 using EinAutomation.Api.Models;
 using EinAutomation.Api.Services.Interfaces;
-using Microsoft.Extensions.Logging;
 using System.Text.Json;
-using System.Linq;
 
 #nullable enable
 

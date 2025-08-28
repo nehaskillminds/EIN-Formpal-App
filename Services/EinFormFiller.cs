@@ -1,16 +1,10 @@
-using Microsoft.Extensions.Logging;
 using EinAutomation.Api.Models;
 using EinAutomation.Api.Services.Interfaces;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
 using OpenQA.Selenium.Interactions;
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Threading.Tasks;
-using System.Linq;
 using EinAutomation.Api.Infrastructure;
 using System.Text.RegularExpressions;
 using System.Globalization;
@@ -32,12 +26,7 @@ namespace EinAutomation.Api.Services
         protected string? _downloadDirectory;
         protected string? ChromeDownloadDirectory { get; set; }
 
-        public EinFormFiller(
-            ILogger<EinFormFiller> logger,
-            IBlobStorageService blobStorageService,
-            ISalesforceClient? salesforceClient = null,
-            bool headless = false,
-            int timeout = 300)
+        public EinFormFiller(ILogger<EinFormFiller> logger, IBlobStorageService blobStorageService, ISalesforceClient? salesforceClient = null, bool headless = false, int timeout = 300)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blobStorageService = blobStorageService ?? throw new ArgumentNullException(nameof(blobStorageService));
@@ -159,7 +148,6 @@ namespace EinAutomation.Api.Services
                 return (null, false);
             }
         }
-
         public bool FillField(By locator, string? value, string label = "field")
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -178,8 +166,9 @@ namespace EinAutomation.Api.Services
 
                 var field = WaitHelper.WaitUntilClickable(Driver, locator, Timeout);
                 ((IJavaScriptExecutor)Driver).ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", field);
-                field.Clear();
-                field.SendKeys(value);
+                field!.Clear();
+                field!.SendKeys(value);
+
                 _logger.LogInformation("Filled {Label}: {Value}", label, value);
                 return true;
             }
@@ -189,7 +178,6 @@ namespace EinAutomation.Api.Services
                 return false;
             }
         }
-
         public bool ClickButton(By locator, string description = "button", int retries = 3)
         {
             if (Wait == null || Driver == null)
@@ -207,10 +195,10 @@ namespace EinAutomation.Api.Services
                     Task.Delay(500).Wait();
 
                     var clickableElement = WaitHelper.WaitUntilClickable(Driver, locator, Timeout);
-                    
+
                     try
                     {
-                        clickableElement.Click();
+                        clickableElement!.Click();
                         _logger.LogInformation("Clicked {Description}", description);
                         Task.Delay(1000).Wait();
                         return true;
@@ -246,7 +234,6 @@ namespace EinAutomation.Api.Services
             }
             return false;
         }
-
         public bool ClickButtonByAriaLabel(string ariaLabel, string description = "button", int retries = 3)
         {
             if (Wait == null || Driver == null)
@@ -269,7 +256,7 @@ namespace EinAutomation.Api.Services
 
                     try
                     {
-                        clickableElement.Click();
+                        clickableElement!.Click();
                         _logger.LogInformation("Clicked {Description} ({AriaLabel})", description, ariaLabel);
                         Task.Delay(1000).Wait();
                         return true;
@@ -305,78 +292,73 @@ namespace EinAutomation.Api.Services
             }
             return false;
         }
-
-
-
-
-public bool SelectRadio(string? radioId, string description = "radio", int? timeoutSeconds = null, int maxRetries = 3)
-{
-    if (string.IsNullOrEmpty(radioId))
-    {
-        _logger.LogWarning("Cannot select {Description} - radioId is null or empty", description);
-        return false;
-    }
-
-    if (Wait == null || Driver == null)
-    {
-        _logger.LogWarning("Cannot select {Description} - Wait or Driver is null", description);
-        return false;
-    }
-
-    var js = (IJavaScriptExecutor)Driver;
-    var effectiveTimeout = TimeSpan.FromSeconds(timeoutSeconds ?? Timeout); // TimeSpan for internal use
-    
-    for (int attempt = 1; attempt <= maxRetries; attempt++)
-    {
-        try
+        public bool SelectRadio(string? radioId, string description = "radio", int? timeoutSeconds = null, int maxRetries = 3)
         {
-            _logger.LogDebug("Attempting to select {Description} (attempt {Attempt}/{MaxRetries})", description, attempt, maxRetries);
-
-            // Strategy 1: Enhanced JavaScript selection with framework event handling
-            if (TryJavaScriptSelection(js, radioId, description))
-                return true;
-
-            // Strategy 2: Wait and click with scroll into view
-            if (TryDirectClick(radioId, description, (int)effectiveTimeout.TotalSeconds)) // Convert TimeSpan to int (seconds)
-                return true;
-
-            // Strategy 3: Label-based selection
-            if (TryLabelClick(js, radioId, description))
-                return true;
-
-            // Strategy 4: Parent container click (for custom radio implementations)
-            if (TryParentContainerClick(js, radioId, description))
-                return true;
-
-            // Strategy 5: CSS selector alternatives
-            if (TryCssSelectorAlternatives(js, radioId, description))
-                return true;
-
-            // Wait before retry for dynamic content
-            if (attempt < maxRetries)
+            if (string.IsNullOrEmpty(radioId))
             {
-                Thread.Sleep(500);
-                _logger.LogDebug("Waiting before retry {NextAttempt}", attempt + 1);
+                _logger.LogWarning("Cannot select {Description} - radioId is null or empty", description);
+                return false;
             }
+
+            if (Wait == null || Driver == null)
+            {
+                _logger.LogWarning("Cannot select {Description} - Wait or Driver is null", description);
+                return false;
+            }
+
+            var js = (IJavaScriptExecutor)Driver;
+            var effectiveTimeout = TimeSpan.FromSeconds(timeoutSeconds ?? Timeout); // TimeSpan for internal use
+
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                try
+                {
+                    _logger.LogDebug("Attempting to select {Description} (attempt {Attempt}/{MaxRetries})", description, attempt, maxRetries);
+
+                    // Strategy 1: Enhanced JavaScript selection with framework event handling
+                    if (TryJavaScriptSelection(js, radioId, description))
+                        return true;
+
+                    // Strategy 2: Wait and click with scroll into view
+                    if (TryDirectClick(radioId, description, (int)effectiveTimeout.TotalSeconds)) // Convert TimeSpan to int (seconds)
+                        return true;
+
+                    // Strategy 3: Label-based selection
+                    if (TryLabelClick(js, radioId, description))
+                        return true;
+
+                    // Strategy 4: Parent container click (for custom radio implementations)
+                    if (TryParentContainerClick(js, radioId, description))
+                        return true;
+
+                    // Strategy 5: CSS selector alternatives
+                    if (TryCssSelectorAlternatives(js, radioId, description))
+                        return true;
+
+                    // Wait before retry for dynamic content
+                    if (attempt < maxRetries)
+                    {
+                        Thread.Sleep(500);
+                        _logger.LogDebug("Waiting before retry {NextAttempt}", attempt + 1);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Attempt {Attempt} failed for {Description}", attempt, description);
+                    if (attempt == maxRetries)
+                    {
+                        _logger.LogWarning(ex, "All attempts failed to select {Description} (ID: {RadioId})", description, radioId);
+                    }
+                }
+            }
+
+            return false;
         }
-        catch (Exception ex)
+        private bool TryJavaScriptSelection(IJavaScriptExecutor js, string radioId, string description)
         {
-            _logger.LogDebug(ex, "Attempt {Attempt} failed for {Description}", attempt, description);
-            if (attempt == maxRetries)
+            try
             {
-                _logger.LogWarning(ex, "All attempts failed to select {Description} (ID: {RadioId})", description, radioId);
-            }
-        }
-    }
-
-    return false;
-}
-
-private bool TryJavaScriptSelection(IJavaScriptExecutor js, string radioId, string description)
-{
-    try
-    {
-        var jsResult = js.ExecuteScript(@"
+                var jsResult = js.ExecuteScript(@"
             var id = arguments[0];
             var el = document.getElementById(id);
             if (!el) return { success: false, reason: 'Element not found' };
@@ -440,238 +422,232 @@ private bool TryJavaScriptSelection(IJavaScriptExecutor js, string radioId, stri
             });
         ", radioId);
 
-        // Handle Promise result (newer Selenium versions)
-        if (jsResult is Dictionary<string, object?> result && result != null)
-        {
-            var success = result.TryGetValue("success", out var successValue) && successValue is bool successBool && successBool;
-            if (success)
-            {
-                _logger.LogInformation("Selected {Description} via enhanced JavaScript", description);
-                return true;
-            }
-        }
-        // Handle direct boolean result (older Selenium versions)
-        else if (jsResult is bool directResult && directResult)
-        {
-            _logger.LogInformation("Selected {Description} via JavaScript", description);
-            return true;
-        }
-    }
-    catch (Exception ex)
-    {
-        _logger.LogDebug(ex, "JavaScript selection failed for {Description}", description);
-    }
-    
-    return false;
-}
-
-private bool TryDirectClick(string radioId, string description, int timeoutSeconds) // Changed to int
-{
-    try
-    {
-        var radio = WaitHelper.WaitUntilClickable(Driver!, By.Id(radioId), timeoutSeconds); // Assumes WaitUntilClickable accepts int
-        
-        // Scroll into view before clicking
-        var js = (IJavaScriptExecutor)Driver!;
-        js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", radio);
-        Thread.Sleep(200); // Brief pause for scroll completion
-        
-        radio.Click();
-        
-        // Verify selection
-        if (radio.Selected)
-        {
-            _logger.LogInformation("Selected {Description} via direct click", description);
-            return true;
-        }
-    }
-    catch (Exception ex)
-    {
-        _logger.LogDebug(ex, "Direct click failed for {Description}", description);
-    }
-    
-    return false;
-}
-
-private bool TryLabelClick(IJavaScriptExecutor js, string radioId, string description)
-{
-    try
-    {
-        // Try multiple label selector approaches
-        var labelSelectors = new[]
-        {
-            $"label[for='{radioId}']",
-            $"label[for=\"{radioId}\"]",
-            $"//label[@for='{radioId}']"
-        };
-
-        foreach (var selector in labelSelectors)
-        {
-            try
-            {
-                IWebElement label = null;
-                
-                if (selector.StartsWith("//"))
+                // Handle Promise result (newer Selenium versions)
+                if (jsResult is Dictionary<string, object?> result && result != null)
                 {
-                    var labels = Driver.FindElements(By.XPath(selector));
-                    label = labels.FirstOrDefault();
-                }
-                else
-                {
-                    var labels = Driver.FindElements(By.CssSelector(selector));
-                    label = labels.FirstOrDefault();
-                }
-
-                if (label != null)
-                {
-                    js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", label);
-                    Thread.Sleep(100);
-                    
-                    try
+                    var success = result.TryGetValue("success", out var successValue) && successValue is bool successBool && successBool;
+                    if (success)
                     {
-                        label.Click();
+                        _logger.LogInformation("Selected {Description} via enhanced JavaScript", description);
+                        return true;
                     }
-                    catch
-                    {
-                        js.ExecuteScript("arguments[0].click();", label);
-                    }
-                    
-                    _logger.LogInformation("Selected {Description} via label click", description);
+                }
+                // Handle direct boolean result (older Selenium versions)
+                else if (jsResult is bool directResult && directResult)
+                {
+                    _logger.LogInformation("Selected {Description} via JavaScript", description);
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Label selector {Selector} failed for {Description}", selector, description);
+                _logger.LogDebug(ex, "JavaScript selection failed for {Description}", description);
             }
+
+            return false;
         }
-    }
-    catch (Exception ex)
-    {
-        _logger.LogDebug(ex, "Label click strategy failed for {Description}", description);
-    }
-    
-    return false;
-}
-
-private bool TryParentContainerClick(IJavaScriptExecutor js, string radioId, string description)
-{
-    try
-    {
-        // Some frameworks wrap radio buttons in clickable containers
-        var containerSelectors = new[]
-        {
-            $"div:has(input#{radioId})",
-            $"span:has(input#{radioId})",
-            $"label:has(input#{radioId})",
-            $"[data-radio-id='{radioId}']",
-            $"[data-testid*='{radioId}']"
-        };
-
-        foreach (var selector in containerSelectors)
+        private bool TryDirectClick(string radioId, string description, int timeoutSeconds) // Changed to int
         {
             try
             {
-                var containers = Driver.FindElements(By.CssSelector(selector));
-                var container = containers.FirstOrDefault();
-                
-                if (container != null)
+                var radio = WaitHelper.WaitUntilClickable(Driver!, By.Id(radioId), timeoutSeconds); // Assumes WaitUntilClickable accepts int
+
+                // Scroll into view before clicking
+                var js = (IJavaScriptExecutor)Driver!;
+                js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", radio);
+                Thread.Sleep(200); // Brief pause for scroll completion
+
+                radio!.Click();
+
+                // Verify selection
+                if (radio.Selected)
                 {
-                    js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", container);
-                    Thread.Sleep(100);
-                    
-                    try
-                    {
-                        container.Click();
-                    }
-                    catch
-                    {
-                        js.ExecuteScript("arguments[0].click();", container);
-                    }
-                    
-                    _logger.LogInformation("Selected {Description} via parent container click", description);
+                    _logger.LogInformation("Selected {Description} via direct click", description);
                     return true;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Container selector {Selector} failed for {Description}", selector, description);
+                _logger.LogDebug(ex, "Direct click failed for {Description}", description);
             }
+
+            return false;
         }
-    }
-    catch (Exception ex)
-    {
-        _logger.LogDebug(ex, "Parent container click strategy failed for {Description}", description);
-    }
-    
-    return false;
-}
-
-private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, string description)
-{
-    try
-    {
-        // Try alternative ways to find the radio button
-        var alternativeSelectors = new[]
-        {
-            $"input[type='radio'][id='{radioId}']",
-            $"input[type='radio'][name*='{radioId}']",
-            $"input[type='radio'][value='{radioId}']",
-            $"input[id='{radioId}']",
-            $"[role='radio'][id='{radioId}']",
-            $"[role='radio'][data-value='{radioId}']"
-        };
-
-        foreach (var selector in alternativeSelectors)
+        private bool TryLabelClick(IJavaScriptExecutor js, string radioId, string description)
         {
             try
             {
-                var elements = Driver.FindElements(By.CssSelector(selector));
-                var element = elements.FirstOrDefault();
-                
-                if (element != null)
+                // Try multiple label selector approaches
+                var labelSelectors = new[]
                 {
-                    js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", element);
-                    Thread.Sleep(100);
-                    
-                    // Try multiple interaction methods
-                    var interactionMethods = new Action[]
+                    $"label[for='{radioId}']",
+                    $"label[for=\"{radioId}\"]",
+                    $"//label[@for='{radioId}']"
+                };
+
+                foreach (var selector in labelSelectors)
+                {
+                    try
                     {
+                        IWebElement? label;
+
+                        if (selector.StartsWith("//"))
+                        {
+                            var labels = Driver!.FindElements(By.XPath(selector));
+                            label = labels.FirstOrDefault();
+                        }
+                        else
+                        {
+                            var labels = Driver!.FindElements(By.CssSelector(selector));
+                            label = labels.FirstOrDefault();
+                        }
+
+                        if (label != null)
+                        {
+                            js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", label);
+                            Thread.Sleep(100);
+
+                            try
+                            {
+                                label.Click();
+                            }
+                            catch
+                            {
+                                js.ExecuteScript("arguments[0].click();", label);
+                            }
+
+                            _logger.LogInformation("Selected {Description} via label click", description);
+                            return true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Label selector {Selector} failed for {Description}", selector, description);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Label click strategy failed for {Description}", description);
+            }
+
+            return false;
+        }
+        private bool TryParentContainerClick(IJavaScriptExecutor js, string radioId, string description)
+        {
+            try
+            {
+                // Some frameworks wrap radio buttons in clickable containers
+                var containerSelectors = new[]
+                {
+                    $"div:has(input#{radioId})",
+                    $"span:has(input#{radioId})",
+                    $"label:has(input#{radioId})",
+                    $"[data-radio-id='{radioId}']",
+                    $"[data-testid*='{radioId}']"
+                };
+
+                foreach (var selector in containerSelectors)
+                {
+                    try
+                    {
+                        var containers = Driver!.FindElements(By.CssSelector(selector));
+                        var container = containers.FirstOrDefault();
+
+                        if (container != null)
+                        {
+                            js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", container);
+                            Thread.Sleep(100);
+
+                            try
+                            {
+                                container.Click();
+                            }
+                            catch
+                            {
+                                js.ExecuteScript("arguments[0].click();", container);
+                            }
+
+                            _logger.LogInformation("Selected {Description} via parent container click", description);
+                            return true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogDebug(ex, "Container selector {Selector} failed for {Description}", selector, description);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Parent container click strategy failed for {Description}", description);
+            }
+
+            return false;
+        }
+        private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, string description)
+        {
+            try
+            {
+                // Try alternative ways to find the radio button
+                var alternativeSelectors = new[]
+                {
+                    $"input[type='radio'][id='{radioId}']",
+                    $"input[type='radio'][name*='{radioId}']",
+                    $"input[type='radio'][value='{radioId}']",
+                    $"input[id='{radioId}']",
+                    $"[role='radio'][id='{radioId}']",
+                    $"[role='radio'][data-value='{radioId}']"
+                };
+
+                foreach (var selector in alternativeSelectors)
+                {
+                    try
+                    {
+                        var elements = Driver!.FindElements(By.CssSelector(selector));
+                        var element = elements.FirstOrDefault();
+
+                        if (element != null)
+                        {
+                            js.ExecuteScript("arguments[0].scrollIntoView({block: 'center'});", element);
+                            Thread.Sleep(100);
+
+                            // Try multiple interaction methods
+                            var interactionMethods = new Action[]
+                            {
                         () => element.Click(),
                         () => js.ExecuteScript("arguments[0].click();", element),
                         () => js.ExecuteScript("arguments[0].checked = true; arguments[0].dispatchEvent(new Event('change', {bubbles: true}));", element)
-                    };
+                            };
 
-                    foreach (var method in interactionMethods)
+                            foreach (var method in interactionMethods)
+                            {
+                                try
+                                {
+                                    method();
+                                    _logger.LogInformation("Selected {Description} via alternative selector {Selector}", description, selector);
+                                    return true;
+                                }
+                                catch
+                                {
+                                    // Continue to next method
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
                     {
-                        try
-                        {
-                            method();
-                            _logger.LogInformation("Selected {Description} via alternative selector {Selector}", description, selector);
-                            return true;
-                        }
-                        catch
-                        {
-                            // Continue to next method
-                        }
+                        _logger.LogDebug(ex, "Alternative selector {Selector} failed for {Description}", selector, description);
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogDebug(ex, "Alternative selector {Selector} failed for {Description}", selector, description);
+                _logger.LogDebug(ex, "CSS selector alternatives strategy failed for {Description}", description);
             }
+
+            return false;
         }
-    }
-    catch (Exception ex)
-    {
-        _logger.LogDebug(ex, "CSS selector alternatives strategy failed for {Description}", description);
-    }
-    
-    return false;
-}
-
-
         public bool SelectDropdown(By locator, string? value, string label = "dropdown")
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -803,13 +779,12 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 return false;
             }
         }
-
         public void Cleanup()
         {
             try
             {
                 CaptureBrowserLogs();
-                
+
                 // DEBUG MODE: Keep browser open for debugging
                 var keepBrowserOpen = Environment.GetEnvironmentVariable("KEEP_BROWSER_OPEN") == "true";
                 if (keepBrowserOpen)
@@ -817,7 +792,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                     _logger.LogInformation("🔍 DEBUG MODE: Browser kept open for debugging (KEEP_BROWSER_OPEN=true)");
                     return;
                 }
-                
+
                 if (Driver != null)
                 {
                     Driver.Quit();
@@ -857,7 +832,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 }
             }
         }
-
         public void ClearAndFill(By locator, string? value, string description)
         {
             if (string.IsNullOrEmpty(value))
@@ -874,8 +848,8 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 }
 
                 var field = WaitHelper.WaitUntilClickable(Driver, locator, Timeout);
-                field.Clear();
-                field.SendKeys(value);
+                field!.Clear();
+                field!.SendKeys(value);
                 _logger.LogInformation("Cleared and filled {Description} with value: {Value}", description, value);
             }
             catch (Exception ex)
@@ -885,7 +859,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 throw new AutomationError($"Failed to clear and fill {description}", ex.Message);
             }
         }
-
         public async Task<(string? BlobUrl, bool Success)> CapturePageAsPdf(CaseData? data, CancellationToken cancellationToken)
         {
             try
@@ -945,7 +918,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 // --- Notify Salesforce if blob upload succeeded ---
                 if (!string.IsNullOrEmpty(blobUrl))
                 {
-                    bool notified = await _salesforceClient.NotifyScreenshotUploadToSalesforceAsync(
+                    bool notified = await _salesforceClient!.NotifyScreenshotUploadToSalesforceAsync(
                         data?.RecordId,
                         blobUrl,
                         data?.EntityName,
@@ -970,7 +943,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 return (null, false);
             }
         }
-
         public async Task<(string? BlobUrl, bool Success)> CaptureSuccessPageAsPdf(CaseData? data, CancellationToken cancellationToken)
         {
             try
@@ -982,10 +954,10 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 }
 
                 // AKS-specific logging
-                var isContainer = Environment.GetEnvironmentVariable("CONTAINER_ENV") == "true" || 
-                                 Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" ||
-                                 File.Exists("/.dockerenv");
-                
+                var isContainer =   Environment.GetEnvironmentVariable("CONTAINER_ENV") == "true" ||
+                                    Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" ||
+                                    File.Exists("/.dockerenv");
+
                 if (isContainer)
                 {
                     _logger.LogInformation("Capturing success PDF in AKS container environment");
@@ -1016,11 +988,11 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                             {
                                 var pdfBytes = Convert.FromBase64String(pdfData);
                                 blobUrl = await _blobStorageService.UploadEinLetterPdf(
-                                    pdfBytes, 
-                                    blobName, 
-                                    "application/pdf", 
-                                    data?.AccountId, 
-                                    data?.EntityId, 
+                                    pdfBytes,
+                                    blobName,
+                                    "application/pdf",
+                                    data?.AccountId,
+                                    data?.EntityId,
                                     data?.CaseId);
                                 _logger.LogInformation($"Success PDF successfully uploaded to: {blobUrl}");
                             }
@@ -1046,7 +1018,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 // --- Notify Salesforce if blob upload succeeded ---
                 if (!string.IsNullOrEmpty(blobUrl))
                 {
-                    bool notified = await _salesforceClient.NotifyEinLetterToSalesforceAsync(
+                    bool notified = await _salesforceClient!.NotifyEinLetterToSalesforceAsync(
                         data?.RecordId,
                         blobUrl,
                         data?.EntityName,
@@ -1071,7 +1043,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 return (null, false);
             }
         }
-
         public async Task<(string? BlobUrl, bool Success)> CaptureFailurePageAsPdf(CaseData? data, CancellationToken cancellationToken)
         {
             try
@@ -1132,7 +1103,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 // --- Notify Salesforce if blob upload succeeded ---
                 if (!string.IsNullOrEmpty(blobUrl))
                 {
-                    bool notified = await _salesforceClient.NotifyFailureScreenshotUploadToSalesforceAsync(
+                    bool notified = await _salesforceClient!.NotifyFailureScreenshotUploadToSalesforceAsync(
                         data?.RecordId,
                         blobUrl,
                         data?.EntityName,
@@ -1157,7 +1128,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 return (null, false);
             }
         }
-
         private async Task<(string? BlobUrl, bool Success)> CapturePageAsPdfHtml2PdfFallback(CaseData? data, CancellationToken cancellationToken)
         {
             try
@@ -1247,18 +1217,18 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 // Execute the script with proper error handling
                 var result = ((IJavaScriptExecutor)Driver).ExecuteAsyncScript(html2pdfScript);
                 var resultJson = result?.ToString();
-                
+
                 if (!string.IsNullOrEmpty(resultJson))
                 {
                     try
                     {
                         var resultData = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(resultJson);
-                        
+
                         if (resultData != null && resultData.ContainsKey("success"))
                         {
                             var successElement = resultData["success"];
                             bool success = false;
-                            
+
                             // Handle different JSON element types
                             if (successElement is System.Text.Json.JsonElement jsonElement)
                             {
@@ -1268,12 +1238,12 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                             {
                                 success = boolValue;
                             }
-                            
+
                             if (success && resultData.ContainsKey("data"))
                             {
                                 var dataElement = resultData["data"];
                                 string? base64Pdf = null;
-                                
+
                                 if (dataElement is System.Text.Json.JsonElement jsonDataElement)
                                 {
                                     base64Pdf = jsonDataElement.GetString();
@@ -1282,7 +1252,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                                 {
                                     base64Pdf = stringValue;
                                 }
-                                
+
                                 if (!string.IsNullOrEmpty(base64Pdf))
                                 {
                                     var pdfBytes = Convert.FromBase64String(base64Pdf);
@@ -1295,7 +1265,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                             {
                                 var errorElement = resultData.ContainsKey("error") ? resultData["error"] : null;
                                 string? error = null;
-                                
+
                                 if (errorElement is System.Text.Json.JsonElement jsonErrorElement)
                                 {
                                     error = jsonErrorElement.GetString();
@@ -1304,7 +1274,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                                 {
                                     error = stringErrorValue;
                                 }
-                                
+
                                 _logger.LogError($"PDF generation failed: {error ?? "Unknown error"}");
                             }
                         }
@@ -1324,7 +1294,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 return (null, false);
             }
         }
-
         private async Task WaitForPageLoadAsync(CancellationToken cancellationToken)
         {
             try
@@ -1349,7 +1318,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 _logger.LogWarning($"Page load wait failed: {ex.Message}");
             }
         }
-
         public void ScrollToElement(By locator, string description = "element", bool center = true)
         {
             try
@@ -1382,7 +1350,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 }
             }
         }
-
         public void ScrollToBottom(int additionalOffset = 0, int maxAttempts = 3)
         {
             try
@@ -1400,27 +1367,27 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 do
                 {
                     lastHeight = currentHeight;
-                    
+
                     // Try multiple scroll height sources
                     ((IJavaScriptExecutor)Driver).ExecuteScript(
                         "window.scrollTo(0, Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));"
                     );
-                    
+
                     Task.Delay(500).Wait(); // Longer delay for dynamic content
-                    
+
                     currentHeight = (long)((IJavaScriptExecutor)Driver).ExecuteScript(
                         "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
                     );
-                    
+
                     attempts++;
-                } 
+                }
                 while (currentHeight > lastHeight && attempts < maxAttempts);
 
                 if (additionalOffset != 0)
                 {
                     ((IJavaScriptExecutor)Driver).ExecuteScript("window.scrollBy(0, arguments[0]);", additionalOffset);
                 }
-                
+
                 Task.Delay(300).Wait();
             }
             catch (Exception ex)
@@ -1428,7 +1395,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 _logger.LogWarning(ex, "Failed to scroll to bottom");
             }
         }
-
         public void CaptureBrowserLogs()
         {
             try
@@ -1441,7 +1407,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                         {"level", log.Level.ToString()},
                         {"message", log.Message}
                     }));
-                    
+
                     foreach (var log in logs)
                     {
                         _logger.LogDebug("Browser console: {Level} - {Message}", log.Level, log.Message);
@@ -1453,21 +1419,17 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 _logger.LogWarning(ex, "Failed to capture browser logs");
             }
         }
-
         public void LogSystemResources(string? referenceId = null, CancellationToken cancellationToken = default)
         {
             var currentProcess = Process.GetCurrentProcess();
             var memoryUsed = currentProcess.WorkingSet64;
             var cpuTime = currentProcess.TotalProcessorTime;
 
-            _logger.LogInformation("System Resources - Ref: {ReferenceId}, Memory: {MemoryUsed} bytes, CPU Time: {CpuTime}",
-                referenceId ?? "N/A", memoryUsed, cpuTime);
+            _logger.LogInformation("System Resources - Ref: {referenceId}, Memory: {memoryUsed} bytes, CPU Time: {cpuTime}", referenceId ?? "N/A", memoryUsed, cpuTime);
         }
-
         public abstract Task NavigateAndFillForm(CaseData? data, Dictionary<string, object?>? jsonData);
         public abstract Task HandleTrusteeshipEntity(CaseData? data);
         public abstract Task<(bool Success, string? Message, string? AzureBlobUrl)> RunAutomation(CaseData? data, Dictionary<string, object> jsonData);
-
         public string NormalizeState(string? state)
         {
             if (string.IsNullOrWhiteSpace(state))
@@ -1477,10 +1439,10 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
             }
 
             var stateClean = state.ToUpper().Trim();
-            
+
             var stateMapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                {"ALABAMA", "AL"}, {"ALASKA", "AK"}, {"ARIZONA", "AZ"}, {"ARKANSAS", "AR"}, 
+                {"ALABAMA", "AL"}, {"ALASKA", "AK"}, {"ARIZONA", "AZ"}, {"ARKANSAS", "AR"},
                 {"CALIFORNIA", "CA"}, {"COLORADO", "CO"}, {"CONNECTICUT", "CT"}, {"DELAWARE", "DE"},
                 {"FLORIDA", "FL"}, {"GEORGIA", "GA"}, {"HAWAII", "HI"}, {"IDAHO", "ID"},
                 {"ILLINOIS", "IL"}, {"INDIANA", "IN"}, {"IOWA", "IA"}, {"KANSAS", "KS"},
@@ -1513,7 +1475,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
 
             return stateClean;
         }
-
         public (string? Month, int Year) ParseFormationDate(string? dateStr)
         {
             if (string.IsNullOrWhiteSpace(dateStr))
@@ -1523,7 +1484,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
             }
 
             var formats = new[] { "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd", "MM/dd/yyyy", "yyyy/MM/dd" };
-            
+
             foreach (var fmt in formats)
             {
                 if (DateTime.TryParseExact(dateStr.Trim(), fmt, null, System.Globalization.DateTimeStyles.None, out var parsed))
@@ -1535,7 +1496,6 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
             _logger.LogWarning("Invalid date format: {DateStr}, using default date", dateStr);
             return (null, 0);
         }
-
         public Dictionary<string, object?> GetDefaults(CaseData? data)
         {
             if (data == null)
@@ -1545,7 +1505,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
             }
 
             var rawMembers = data.EntityMembers ?? new Dictionary<string, string>();
-            
+
             var entityMembersDict = new Dictionary<string, string?>
             {
                 {"first_name_1", (rawMembers.GetValueOrDefault("first_name_1") ?? "").Trim()},
@@ -1556,7 +1516,7 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
 
             // Fix for MailingAddress now being a list
             var mailingAddress = (data.MailingAddress != null && data.MailingAddress.Count > 0) ? data.MailingAddress[0] : new Dictionary<string, string>();
-            
+
             return new Dictionary<string, object?>
             {
                 {"first_name", entityMembersDict["first_name_1"]},
@@ -1580,218 +1540,101 @@ private bool TryCssSelectorAlternatives(IJavaScriptExecutor js, string radioId, 
                 {"filing_requirement", data.FilingRequirement ?? ""}
             };
         }
-________________________________________________________________________AKS DRIVER_______________________________________________
-public void InitializeDriver()
-{
-    try
-    {
-        LogSystemResources();
-        // Ensure HOME variable and Chrome data directories
-        var chromeHome = "/tmp/chrome-home";
-        Environment.SetEnvironmentVariable("HOME", chromeHome);
-        Directory.CreateDirectory(chromeHome);
-        var chromeDownloads = "/tmp/chrome-home/Downloads";
-        Directory.CreateDirectory(chromeDownloads);
-        var chromeUserData = $"/tmp/chrome-{Guid.NewGuid()}-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
-        Directory.CreateDirectory(chromeUserData);
         
-        // Store the download directory path for PDF capture methods
-        ChromeDownloadDirectory = chromeDownloads;
-        
-        var options = new ChromeOptions
+        public void InitializeDriver(bool useProxy, string? proxyHost, int? proxyPort, string? proxyUsername, string? proxyPassword, string recordId)
         {
-            BinaryLocation = "/usr/bin/chromium",
-            AcceptInsecureCertificates = true
-        };
-        // Chromium runtime arguments
-        options.AddArgument($"--user-data-dir={chromeUserData}");
-        options.AddArgument("--headless=new");
-        options.AddArgument("--no-sandbox");
-        options.AddArgument("--disable-setuid-sandbox");
-        options.AddArgument("--disable-dev-shm-usage");
-        options.AddArgument("--disable-gpu");
-        options.AddArgument("--disable-software-rasterizer");
-        options.AddArgument("--disable-infobars");
-        options.AddArgument("--disable-blink-features=AutomationControlled");
-        options.AddArgument("--disable-extensions");
-        options.AddArgument("--no-first-run");
-        options.AddArgument("--no-default-browser-check");
-        options.AddArgument("--disable-background-networking");
-        options.AddArgument("--disable-sync");
-        options.AddArgument("--disable-default-apps");
-        options.AddArgument("--disable-translate");
-        options.AddArgument("--window-size=1920,1080");
-        options.AddArgument("--remote-debugging-port=9222");
-        options.AddArgument("--remote-debugging-address=0.0.0.0");
-        options.AddArgument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36");
-        // Route downloads into the dedicated HOME/Downloads directory
-        options.AddUserProfilePreference("download.default_directory", chromeDownloads);
-        options.AddUserProfilePreference("download.prompt_for_download", false);
-        options.AddUserProfilePreference("download.directory_upgrade", true);
-        options.AddUserProfilePreference("safebrowsing.enabled", true);
-        options.AddUserProfilePreference("plugins.always_open_pdf_externally", true);
-        options.AddUserProfilePreference("profile.default_content_setting_values.automatic_downloads", 1);
-        // ChromeDriver service configuration
-        var driverService = ChromeDriverService.CreateDefaultService(Path.GetDirectoryName("/usr/bin/"), "chromedriver");
-        driverService.LogPath = "/tmp/chromedriver.log"; // Force a known path
-        driverService.EnableVerboseLogging = true;
-        driverService.SuppressInitialDiagnosticInformation = false;
-        Driver = new ChromeDriver(driverService, options);
-        Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
-        // Disable JS popups
-        ((IJavaScriptExecutor)Driver).ExecuteScript(@"
-            window.alert = function() { return true; };
-            window.confirm = function() { return true; };
-            window.prompt = function() { return null; };
-            window.open = function() { return null; };
-        ");
-        _logger.LogInformation("WebDriver initialized successfully with Chromium - Download directory: {DownloadDir}", chromeDownloads);
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Failed to initialize WebDriver");
-        LogChromeDriverDiagnostics();
-        throw;
-    }
-}
-
-________________________________________________________________________LOCAL DRIVER_______________________________________________
-        public void InitializeDriver()
-            {
-                try
-                {
-                    LogSystemResources(); // You need to implement this
-                    
-                    // Create Chrome download directory for local testing
-                    var chromeDownloads = Path.Combine(Path.GetTempPath(), "chrome-downloads");
-                    Directory.CreateDirectory(chromeDownloads);
-                    
-                    // Store the download directory path for PDF capture methods
-                    ChromeDownloadDirectory = chromeDownloads;
-                    
-                    var options = new ChromeOptions();
-                    // Set Chrome arguments
-                    options.AddArgument("--disable-gpu");
-                    options.AddArgument("--enable-unsafe-swiftshader");
-                    options.AddArgument("--no-sandbox");
-                    options.AddArgument("--disable-dev-shm-usage");
-                    options.AddArgument("--disable-blink-features=AutomationControlled");
-                    options.AddArgument("--disable-infobars");
-                    options.AddArgument("--window-size=1920,1080");
-                    options.AddArgument("--start-maximized");
-                    
-                    // Set Chrome preferences
-                var prefs = new Dictionary<string, object>
-                {
-                    ["profile.default_content_setting_values.popups"] = 2,
-                    ["profile.default_content_setting_values.notifications"] = 2,
-                    ["profile.default_content_setting_values.geolocation"] = 2,
-                    ["credentials_enable_service"] = false,
-                    ["profile.password_manager_enabled"] = false,
-                    ["autofill.profile_enabled"] = false,
-                    ["autofill.credit_card_enabled"] = false,
-                    ["password_manager_enabled"] = false,
-                    ["profile.password_dismissed_save_prompt"] = true,
-                    ["plugins.always_open_pdf_externally"] = true,
-                    ["download.prompt_for_download"] = false,
-                    ["download.directory_upgrade"] = true,
-                    ["safebrowsing.enabled"] = true,
-                    ["download.default_directory"] = chromeDownloads,
-                    ["profile.default_content_setting_values.automatic_downloads"] = 1
-                };
-                    options.AddUserProfilePreference("prefs", prefs);
-                    
-                    // Use regular ChromeDriver with anti-detection options
-                    var service = ChromeDriverService.CreateDefaultService();
-                    Driver = new ChromeDriver(service, options);
-                    
-                    // Option 2: Or use default if ChromeDriver is in PATH
-                    // Driver = new ChromeDriver(options);
-                    
-                    Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
-                    
-                    // Override JS functions
-                    var js = (IJavaScriptExecutor)Driver;
-                    js.ExecuteScript(@"
-                        window.alert = function() { return true; };
-                        window.confirm = function() { return true; };
-                        window.prompt = function() { return null; };
-                        window.open = function() { return null; };
-                    ");
-                    
-                    Console.WriteLine("- WebDriver initialized successfully");
-                    _logger.LogInformation("WebDriver initialized successfully for local testing - Download directory: {DownloadDir}", chromeDownloads);
-                }
-                catch (Exception ex)
-                {
-                    Console.Error.WriteLine($"Failed to initialize WebDriver: {ex.Message}");
-                    throw;
-                }
-            }
-
-private void LogChromeDriverDiagnostics()
-{
-    try
-    {
-        _logger.LogInformation("=== Chrome Driver Diagnostics ===");
-        
-        // Check if Chromium is installed
-        if (File.Exists("/usr/bin/chromium"))
-        {
-            _logger.LogInformation("Chromium found at /usr/bin/chromium");
-        }
-        else
-        {
-            _logger.LogWarning("Chromium not found at /usr/bin/chromium");
-        }
-        
-        // Check ChromeDriver
-        if (File.Exists("/usr/bin/chromedriver"))
-        {
-            _logger.LogInformation("ChromeDriver found at /usr/bin/chromedriver");
-            
-            // Try to get version info
             try
             {
-                var processInfo = new ProcessStartInfo
+                LogSystemResources(recordId); // You need to implement this
+
+                if (useProxy) 
                 {
-                    FileName = "/usr/bin/chromedriver",
-                    Arguments = "--version",
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false
-                };
-                
-                using (var process = Process.Start(processInfo))
-                {
-                    var output = process.StandardOutput.ReadToEnd();
-                    _logger.LogInformation($"ChromeDriver version: {output.Trim()}");
+                    // Store the download directory path for PDF capture methods
+                    ChromeDownloadDirectory = "/tmp/chrome-home/Downloads";
+                    Driver = DriverInitializer.InitializeAKS(ChromeDownloadDirectory, recordId);
                 }
+                else 
+                {
+                    // Store the download directory path for PDF capture methods
+                    ChromeDownloadDirectory = Path.Combine(Path.GetTempPath(), $"chrome-downloads-{recordId}");                    
+                    Driver = DriverInitializer.InitializeLocal(ChromeDownloadDirectory, recordId);
+                }
+
+                //todo: the webDriverWaiter is not initialize for the AKS, pls explain?
+                Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(Timeout));
+                
+                Console.WriteLine("- WebDriver initialized successfully");
+
+                _logger.LogInformation("WebDriver initialized successfully for local testing - Download directory: {ChromeDownloadDirectory}", ChromeDownloadDirectory);
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Could not get ChromeDriver version");
+                Console.Error.WriteLine($"Failed to initialize WebDriver: {ex.Message}");
+                throw;
             }
         }
-        else
+        private void LogChromeDriverDiagnostics()
         {
-            _logger.LogWarning("ChromeDriver not found at /usr/bin/chromedriver");
+            try
+            {
+                _logger.LogInformation("=== Chrome Driver Diagnostics ===");
+
+                // Check if Chromium is installed
+                if (File.Exists("/usr/bin/chromium"))
+                {
+                    _logger.LogInformation("Chromium found at /usr/bin/chromium");
+                }
+                else
+                {
+                    _logger.LogWarning("Chromium not found at /usr/bin/chromium");
+                }
+
+                // Check ChromeDriver
+                if (File.Exists("/usr/bin/chromedriver"))
+                {
+                    _logger.LogInformation("ChromeDriver found at /usr/bin/chromedriver");
+
+                    // Try to get version info
+                    try
+                    {
+                        var processInfo = new ProcessStartInfo
+                        {
+                            FileName = "/usr/bin/chromedriver",
+                            Arguments = "--version",
+                            RedirectStandardOutput = true,
+                            UseShellExecute = false
+                        };
+
+                        using (var process = Process.Start(processInfo))
+                        {
+                            var output = process!.StandardOutput.ReadToEnd();
+                            _logger.LogInformation($"ChromeDriver version: {output.Trim()}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Could not get ChromeDriver version");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning("ChromeDriver not found at /usr/bin/chromedriver");
+                }
+
+                // Check environment variables
+                var chromeBin = Environment.GetEnvironmentVariable("CHROME_BIN");
+                var chromeDriverPath = Environment.GetEnvironmentVariable("CHROMEDRIVER_PATH");
+
+                _logger.LogInformation($"CHROME_BIN environment variable: {chromeBin ?? "Not set"}");
+                _logger.LogInformation($"CHROMEDRIVER_PATH environment variable: {chromeDriverPath ?? "Not set"}");
+
+                _logger.LogInformation("=== End Chrome Driver Diagnostics ===");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during Chrome driver diagnostics");
+            }
         }
-        
-        // Check environment variables
-        var chromeBin = Environment.GetEnvironmentVariable("CHROME_BIN");
-        var chromeDriverPath = Environment.GetEnvironmentVariable("CHROMEDRIVER_PATH");
-        
-        _logger.LogInformation($"CHROME_BIN environment variable: {chromeBin ?? "Not set"}");
-        _logger.LogInformation($"CHROMEDRIVER_PATH environment variable: {chromeDriverPath ?? "Not set"}");
-        
-        _logger.LogInformation("=== End Chrome Driver Diagnostics ===");
-    }
-    catch (Exception ex)
-    {
-        _logger.LogError(ex, "Error during Chrome driver diagnostics");
-    }
-}
-        
         public virtual Task<byte[]?> GetBrowserLogsAsync(CaseData? data, CancellationToken ct)
         {
             if (data == null || Driver == null)
@@ -1815,13 +1658,11 @@ private void LogChromeDriverDiagnostics()
                 return Task.FromResult<byte[]?>(null);
             }
         }
-
         public virtual async Task CleanupAsync(CancellationToken ct)
         {
             Cleanup();
             await Task.CompletedTask;
         }
-
         protected async Task<byte[]> DownloadBlobAsync(string? blobUrl, CancellationToken ct)
         {
             if (string.IsNullOrEmpty(blobUrl))
@@ -1835,7 +1676,6 @@ private void LogChromeDriverDiagnostics()
             response.EnsureSuccessStatusCode();
             return await response.Content.ReadAsByteArrayAsync(ct);
         }
-
         /// <summary>
         /// Saves PDF with method identifier using the new tagging system for EIN Letter PDFs
         /// </summary>
@@ -1847,20 +1687,20 @@ private void LogChromeDriverDiagnostics()
                 {
                     // Create the clean entity name exactly like in the original blob naming structure
                     var cleanName = Regex.Replace(data.EntityName, @"[^\w\-]", "").Replace(" ", "");
-                    
+
                     // Use the original blob naming structure: EntityProcess/{RecordId}/{cleanName}-ID-EINLetter.pdf
                     // But append the method identifier at the end before .pdf
                     var blobName = $"EntityProcess/{data.RecordId}/{cleanName}-ID-EINLetter-{methodName}.pdf";
-                    
+
                     var blobUrl = await _blobStorageService.UploadEinLetterPdf(
-                        pdfBytes, 
-                        blobName, 
-                        "application/pdf", 
-                        data.AccountId, 
-                        data.EntityId, 
-                        data.CaseId, 
+                        pdfBytes,
+                        blobName,
+                        "application/pdf",
+                        data.AccountId,
+                        data.EntityId,
+                        data.CaseId,
                         cancellationToken);
-                        
+
                     if (!string.IsNullOrEmpty(blobUrl))
                     {
                         _logger.LogInformation("💾 EIN LETTER PDF SAVED WITH METHOD ID: {MethodName} - {BlobName} - {BlobUrl}", methodName, blobName, blobUrl);
@@ -1892,19 +1732,19 @@ private void LogChromeDriverDiagnostics()
                 {
                     // Create the clean entity name
                     var cleanName = Regex.Replace(data.EntityName, @"[^\w\-]", "").Replace(" ", "");
-                    
+
                     // Use standard blob naming for confirmation PDFs
                     var blobName = $"EntityProcess/{data.RecordId}/{fileName}";
-                    
+
                     var blobUrl = await _blobStorageService.UploadConfirmationPdf(
-                        pdfBytes, 
-                        blobName, 
-                        "application/pdf", 
-                        data.AccountId, 
-                        data.EntityId, 
-                        data.CaseId, 
+                        pdfBytes,
+                        blobName,
+                        "application/pdf",
+                        data.AccountId,
+                        data.EntityId,
+                        data.CaseId,
                         cancellationToken);
-                        
+
                     if (!string.IsNullOrEmpty(blobUrl))
                     {
                         _logger.LogInformation("💾 CONFIRMATION PDF SAVED: {FileName} - {BlobName} - {BlobUrl}", fileName, blobName, blobUrl);

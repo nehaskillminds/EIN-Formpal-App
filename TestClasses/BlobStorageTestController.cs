@@ -1,12 +1,6 @@
 using EinAutomation.Api.Services.Interfaces;
 using EinAutomation.Api.TestClasses;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Threading.Tasks;
 
 namespace EinAutomation.Api.Controllers
 {

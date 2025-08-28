@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using Microsoft.Extensions.Configuration;
 using Azure.Identity;
 using Azure.Security.KeyVault.Secrets;
 

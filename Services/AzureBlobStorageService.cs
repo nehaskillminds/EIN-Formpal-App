@@ -1,20 +1,12 @@
 using Azure;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using EinAutomation.Api.Models;
 using EinAutomation.Api.Services.Interfaces;
-using System;
-using System.IO;
 using System.Text;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Threading;
-using Microsoft.Extensions.Configuration;
 
 #nullable enable
 
@@ -34,14 +26,14 @@ namespace EinAutomation.Api.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             // Try to get connection string from configuration (Key Vault or appsettings)
-            _connectionString = configuration["Azure:Blob:ConnectionString"];
+            _connectionString = configuration["Azure:Blob:ConnectionString"]!;
 
             // If not found, try environment variable (e.g., set in Dockerfile)
             if (string.IsNullOrWhiteSpace(_connectionString))
             {
                 _logger.LogWarning("Azure:Blob:ConnectionString not found in configuration, checking environment variable...");
 
-                _connectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING");
+                _connectionString = Environment.GetEnvironmentVariable("AZURE_STORAGE_CONNECTION_STRING")!;
 
                 if (string.IsNullOrWhiteSpace(_connectionString))
                 {
@@ -59,14 +51,14 @@ namespace EinAutomation.Api.Services
             }
 
             // Get container name from configuration (Key Vault or appsettings)
-            _containerName = configuration["Azure:Blob:Container"];
+            _containerName = configuration["Azure:Blob:Container"]!;
 
             // If not found, try environment variable
             if (string.IsNullOrWhiteSpace(_containerName))
             {
                 _logger.LogWarning("Azure:Blob:Container not found in configuration, checking environment variable...");
 
-                _containerName = Environment.GetEnvironmentVariable("AZURE_CONTAINER_NAME");
+                _containerName = Environment.GetEnvironmentVariable("AZURE_CONTAINER_NAME")!;
 
                 if (string.IsNullOrWhiteSpace(_containerName))
                 {
