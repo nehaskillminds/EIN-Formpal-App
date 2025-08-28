@@ -47,6 +47,19 @@ namespace EinAutomation.Api.Services.Interfaces
         /// <returns>The URL of the uploaded log file or null if failed</returns>
         Task<string?> UploadLogToBlob(string? recordId, string? logFilePath);
 
+        /// <summary>
+        /// Uploads base64 EIN Letter with specific tags (HiddenFromClient=false, AccountId, EntityId, CaseId)
+        /// </summary>
+        /// <param name="dataBytes">The base64 data to upload</param>
+        /// <param name="blobName">The blob name/path</param>
+        /// <param name="contentType">The content type</param>
+        /// <param name="accountId">Account ID from payload</param>
+        /// <param name="entityId">Entity ID from payload</param>
+        /// <param name="caseId">Case ID from payload</param>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>The URL of the uploaded blob</returns>
+        Task<string> UploadBase64EinLetterAsync(byte[] dataBytes, string blobName, string contentType, string? accountId, string? entityId, string? caseId, CancellationToken cancellationToken);
+
         // Legacy methods - kept for backward compatibility but will be phased out
         Task<string> UploadBytesToBlob(byte[] dataBytes, string blobName, string contentType, CancellationToken cancellationToken = default);
         Task<string> UploadFinalBytesToBlob(byte[] dataBytes, string blobName, string contentType, CancellationToken cancellationToken = default);

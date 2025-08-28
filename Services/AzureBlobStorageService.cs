@@ -348,6 +348,57 @@ namespace EinAutomation.Api.Services
             }
         }
 
+        public async Task<string> UploadBase64EinLetterAsync(byte[] dataBytes, string blobName, string contentType, string? accountId, string? entityId, string? caseId, CancellationToken cancellationToken)
+        {
+            try
+            {
+                BlobServiceClient blobServiceClient = new(_connectionString);
+                BlobContainerClient containerClient = blobServiceClient.GetBlobContainerClient(_containerName);
+
+                BlobClient blobClient = containerClient.GetBlobClient(blobName);
+                using (var stream = new MemoryStream(dataBytes))
+                {
+                    await blobClient.UploadAsync(stream, overwrite: true, cancellationToken: cancellationToken);
+                }
+
+                await blobClient.SetHttpHeadersAsync(new BlobHttpHeaders
+                {
+                    ContentType = contentType
+                }, cancellationToken: cancellationToken);
+
+                var tags = new Dictionary<string, string>
+                {
+                    { "HiddenFromClient", "false" },
+                    { "AccountId", accountId ?? "" },
+                    { "EntityId", entityId ?? "" },
+                    { "CaseId", caseId ?? "" }
+                };
+
+                _logger.LogInformation("🏷️ Attempting to set blob index tags for Base64 EIN Letter: {Tags}", string.Join(", ", tags.Select(kvp => $"{kvp.Key}={kvp.Value}")));
+
+                try
+                {
+                    await blobClient.SetTagsAsync(tags, cancellationToken: cancellationToken);
+                    _logger.LogInformation("✅ Blob index tags set successfully for Base64 EIN Letter");
+                }
+                catch (RequestFailedException ex) when (ex.Status == 403)
+                {
+                    _logger.LogWarning("⚠️ Permission denied when setting blob index tags. The storage account connection string/SAS token needs 'Microsoft.Storage/storageAccounts/blobServices/containers/blobs/tags/write' permission or 't' permission in SAS. Error: {ErrorMessage}", ex.Message);
+                }
+                catch (RequestFailedException ex)
+                {
+                    _logger.LogWarning("⚠️ Failed to set blob index tags (Status: {Status}): {ErrorMessage}", ex.Status, ex.Message);
+                }
+
+                return blobClient.Uri.ToString();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading Base64 EIN Letter to blob storage");
+                throw;
+            }
+        }
+
         public async Task<string?> UploadLogToBlob(string? recordId, string? logFilePath)
         {
             string blobName = $"logs/{recordId}/chromedriver_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.log";

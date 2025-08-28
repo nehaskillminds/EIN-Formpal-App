@@ -1873,72 +1873,57 @@ namespace EinAutomation.Api.Services
                     _logger.LogInformation("🚀 Starting comprehensive EIN Letter PDF capture using three methods...");
 
                     // Method 1: AggressiveScan
-                    byte[]? pdfBytes1 = null;
+                    var results = new Dictionary<string, byte[]?>();
+                    string? base64BlobUrl = null;
+
                     try
                     {
                         _logger.LogInformation("📥 METHOD SET 1: Executing AggressiveScan...");
-                        pdfBytes1 = await TryAggressiveScan(cancellationToken);
-                        if (pdfBytes1 != null && pdfBytes1.Length > 0)
-                        {
-                            _logger.LogInformation("✅ METHOD SET 1 SUCCESS: AggressiveScan returned {FileSize} bytes", pdfBytes1.Length);
-                        }
+                        var aggressiveScanResult = await TryAggressiveScan(cancellationToken);
+                        results.Add("AggressiveScan", aggressiveScanResult);
+                        if (aggressiveScanResult != null && aggressiveScanResult.Length > 0)
+                            _logger.LogInformation("✅ METHOD SET 1 SUCCESS: AggressiveScan returned {FileSize} bytes", aggressiveScanResult.Length);
                         else
-                        {
                             _logger.LogWarning("❌ METHOD SET 1 FAILED: AggressiveScan returned null or empty");
-                        }
                     }
                     catch (Exception ex1)
                     {
                         _logger.LogError(ex1, "❌ METHOD SET 1 EXCEPTION: AggressiveScan failed with exception");
                     }
 
-                    // Method 2: TryDownloadPdfToTemporaryDirectory (Direct PDF storage in temporary directory)
-                    byte[]? pdfBytes2 = null;
                     try
                     {
                         _logger.LogInformation("📥 METHOD SET 2: Executing TryDownloadPdfToTemporaryDirectory...");
-                        pdfBytes2 = await TryDownloadPdfToTemporaryDirectory(data!, cancellationToken);
-                        if (pdfBytes2 != null && pdfBytes2.Length > 0)
-                        {
-                            _logger.LogInformation("✅ METHOD SET 2 SUCCESS: TryDownloadPdfToTemporaryDirectory returned {FileSize} bytes", pdfBytes2.Length);
-                        }
+                        var downloadToTempResult = await TryDownloadPdfToTemporaryDirectory(data!, cancellationToken);
+                        results.Add("DownloadToTemp", downloadToTempResult);
+                        if (downloadToTempResult != null && downloadToTempResult.Length > 0)
+                            _logger.LogInformation("✅ METHOD SET 2 SUCCESS: TryDownloadPdfToTemporaryDirectory returned {FileSize} bytes", downloadToTempResult.Length);
                         else
-                        {
                             _logger.LogWarning("❌ METHOD SET 2 FAILED: TryDownloadPdfToTemporaryDirectory returned null or empty");
-                        }
                     }
                     catch (Exception ex2)
                     {
                         _logger.LogError(ex2, "❌ METHOD SET 2 EXCEPTION: TryDownloadPdfToTemporaryDirectory failed with exception");
                     }
 
-                    // Method 3: TryBase64PdfExtraction (Base64 PDF extraction with temporary storage)
-                    byte[]? pdfBytes3 = null;
                     try
                     {
                         _logger.LogInformation("📥 METHOD SET 3: Executing TryBase64PdfExtraction...");
-                        pdfBytes3 = await TryBase64PdfExtraction(data, cancellationToken);
-                        if (pdfBytes3 != null && pdfBytes3.Length > 0)
-                        {
-                            _logger.LogInformation("✅ METHOD SET 3 SUCCESS: TryBase64PdfExtraction returned {FileSize} bytes", pdfBytes3.Length);
-                        }
+                        var (base64PdfBytes, url) = await TryBase64PdfExtraction(data, cancellationToken);
+                        results.Add("Base64", base64PdfBytes);
+                        base64BlobUrl = url;
+                        if (base64PdfBytes != null && base64PdfBytes.Length > 0)
+                            _logger.LogInformation("✅ METHOD SET 3 SUCCESS: TryBase64PdfExtraction returned {FileSize} bytes", base64PdfBytes.Length);
                         else
-                        {
                             _logger.LogWarning("❌ METHOD SET 3 FAILED: TryBase64PdfExtraction returned null or empty");
-                        }
+                        if (!string.IsNullOrEmpty(base64BlobUrl))
+                            _logger.LogInformation("✅ Base64 content uploaded to: {Url}", base64BlobUrl);
+
                     }
                     catch (Exception ex3)
                     {
                         _logger.LogError(ex3, "❌ METHOD SET 3 EXCEPTION: TryBase64PdfExtraction failed with exception");
                     }
-
-                    // Store results from all methods
-                    var results = new List<(string MethodName, byte[]? PdfBytes)>
-                    {
-                        ("AggressiveScan", pdfBytes1),
-                        ("TryDownloadPdfToTemporaryDirectory", pdfBytes2),
-                        ("TryBase64PdfExtraction", pdfBytes3)
-                    };
 
                     string? primaryPdfUrl = null;
 
@@ -2320,68 +2305,71 @@ namespace EinAutomation.Api.Services
         /// <summary>
         /// Base64 PDF extraction method (from PdfDownloadTestController)
         /// </summary>
-        private async Task<byte[]?> TryBase64PdfExtraction(CaseData? data, CancellationToken cancellationToken)
-        {
-            try
-            {
-                _logger.LogInformation("🔽 METHOD: Base64 PDF extraction");
-                // Use the Chrome download directory configured during WebDriver initialization
-                if (string.IsNullOrEmpty(ChromeDownloadDirectory))
-                    throw new Exception("ChromeDownloadDirectory is not configured");
-
-                _logger.LogInformation("Using Chrome download directory for base64 extraction: {ChromeDownloadDirectory}", ChromeDownloadDirectory);
-                // Clear any existing files in the download directory
-               
-                FileHelper.DeleteFiles(ChromeDownloadDirectory);
-                
-                // Find and click the IRS EIN confirmation letter button
-                var downloadButton = await FindIrsEinConfirmationButton() ?? throw new Exception("IRS EIN confirmation button not found for base64 extraction");
-
-                // Click the download button
-                _logger.LogInformation("Clicking IRS EIN confirmation letter button for base64 extraction");
-                downloadButton.Click();
-
-                await Task.Delay(3000, cancellationToken);
-                
-                _logger.LogInformation("Waiting for PDF download to complete for base64 conversion...");     
-
-                var downloadedFilePath = await FileHelper.WaitForFileDownloadAsync(ChromeDownloadDirectory, 30000, 1000, cancellationToken) ??
-                    throw new Exception("Aggressive scan timeout - no valid PDF found in Chrome download directory");
-
-                var fileBytes = await File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
-                if (fileBytes != null && fileBytes.Length > 0)
+                private async Task<(byte[]? PdfBytes, string? Base64BlobUrl)> TryBase64PdfExtraction(CaseData? data, CancellationToken cancellationToken)
                 {
-                    // Convert PDF bytes to base64 string
-                    var base64String = Convert.ToBase64String(fileBytes);
-
                     try
                     {
-                        var base64Bytes = System.Text.Encoding.UTF8.GetBytes(base64String);
-                        var cleanName = Regex.Replace(data?.EntityName ?? "unknown", @"[^\w\-]", "").Replace(" ", "");
-                        var blobName = $"EntityProcess/{data?.RecordId ?? "unknown"}/{cleanName}-ID-Base64.txt";
+                        _logger.LogInformation("🔽 METHOD: Base64 PDF extraction");
+                        // Use the Chrome download directory configured during WebDriver initialization
+                        if (string.IsNullOrEmpty(ChromeDownloadDirectory))
+                            throw new Exception("ChromeDownloadDirectory is not configured");
 
-                        await _blobStorageService.UploadAsync(base64Bytes, blobName, "text/plain", true, cancellationToken);
-                        _logger.LogInformation("Successfully uploaded Base64 PDF content to {BlobName}", blobName);
+                        _logger.LogInformation("Using Chrome download directory for base64 extraction: {ChromeDownloadDirectory}", ChromeDownloadDirectory);
+                        // Clear any existing files in the download directory
+
+                        FileHelper.DeleteFiles(ChromeDownloadDirectory);
+
+                        // Find and click the IRS EIN confirmation letter button
+                        var downloadButton = await FindIrsEinConfirmationButton() ?? throw new Exception("IRS EIN confirmation button not found for base64 extraction");
+
+                        // Click the download button
+                        _logger.LogInformation("Clicking IRS EIN confirmation letter button for base64 extraction");
+                        downloadButton.Click();
+
+                        await Task.Delay(3000, cancellationToken);
+
+                        _logger.LogInformation("Waiting for PDF download to complete for base64 conversion...");
+
+                        var downloadedFilePath = await FileHelper.WaitForFileDownloadAsync(ChromeDownloadDirectory, 30000, 1000, cancellationToken) ??
+                            throw new Exception("Aggressive scan timeout - no valid PDF found in Chrome download directory");
+
+                        var fileBytes = await File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
+                        if (fileBytes != null && fileBytes.Length > 0)
+                        {
+                            // Convert PDF bytes to base64 string
+                            var base64String = Convert.ToBase64String(fileBytes);
+
+                            try
+                            {
+                                var base64Bytes = System.Text.Encoding.UTF8.GetBytes(base64String);
+                                var cleanName = Regex.Replace(data?.EntityName ?? "unknown", @"[^\w\-]", "").Replace(" ", "");
+                                var blobName = $"EntityProcess/{data?.RecordId ?? "unknown"}/{cleanName}-ID-Base64.txt";
+
+                                var blobUrl = await _blobStorageService.UploadBase64EinLetterAsync(base64Bytes, blobName, "text/plain", data?.AccountId, data?.EntityId, data?.CaseId, cancellationToken);
+                                _logger.LogInformation("Successfully uploaded Base64 PDF content to {BlobName}", blobName);
+
+                                File.Delete(downloadedFilePath);
+                                return (fileBytes, blobUrl);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Failed to upload Base64 PDF content.");
+                            }
+
+                            File.Delete(downloadedFilePath);
+
+                            return (fileBytes, null);
+                        }
+
+                        throw new Exception($"Downloaded file is not a valid PDF: {downloadedFilePath}");
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogWarning(ex, "Failed to upload Base64 PDF content.");
+                        _logger.LogError(ex, "Error in TryBase64PdfExtraction");
                     }
 
-                    File.Delete(downloadedFilePath);
-
-                    return fileBytes;
+                    return (null, null);
                 }
-                
-                throw new Exception($"Downloaded file is not a valid PDF: {downloadedFilePath}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError("Error in TryAggressiveScan\n{Message}", ex);                
-            }
-            
-            return null;
-        }
 #endregion
         /// <summary>
         /// Extract base64 PDF from HTML content (from PdfDownloadTestController)
