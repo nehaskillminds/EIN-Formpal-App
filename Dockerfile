@@ -55,11 +55,27 @@ ENV CHROME_BIN=/usr/bin/chromium \
     CHROMEDRIVER_PATH=/usr/bin/chromedriver \
     AZURE_STORAGE_CONNECTION_STRING=""
 
+# Create necessary directories for Chrome downloads and data protection
+RUN mkdir -p /tmp/chrome-home/Downloads && \
+    mkdir -p /tmp/chrome-userdata && \
+    mkdir -p /tmp/data-protection-keys && \
+    mkdir -p /tmp/chromedriver-logs && \
+    chmod 755 /tmp/chrome-home && \
+    chmod 755 /tmp/chrome-home/Downloads && \
+    chmod 755 /tmp/chrome-userdata && \
+    chmod 755 /tmp/data-protection-keys && \
+    chmod 755 /tmp/chromedriver-logs
+
 # Copy published output from build stage
 COPY --from=publish /app/publish .
 
 # Create non-root user and set ownership
-RUN useradd -m appuser && chown -R appuser /app
+RUN useradd -m appuser && \
+    chown -R appuser /app && \
+    chown -R appuser /tmp/chrome-home && \
+    chown -R appuser /tmp/chrome-userdata && \
+    chown -R appuser /tmp/data-protection-keys && \
+    chown -R appuser /tmp/chromedriver-logs
 USER appuser
 
 # Start the application

@@ -4,6 +4,7 @@ using EinAutomation.Api.Options;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using EinAutomation.Api.Services.Interfaces;
+using Microsoft.AspNetCore.DataProtection;
 
 
 namespace EinAutomation.Api
@@ -46,23 +47,43 @@ namespace EinAutomation.Api
             {
                 // In AKS, use the port provided by Kubernetes (usually 80 or 8080)
                 var port = Environment.GetEnvironmentVariable("PORT") ?? "80";
-                builder.WebHost.UseUrls($"http://+:{port}");
                 
-                // Configure Kestrel for AKS
+                // Configure Kestrel for AKS without conflicting UseUrls
                 builder.WebHost.ConfigureKestrel(options =>
                 {
                     options.ListenAnyIP(int.Parse(port));
                 });
+                
+                Console.WriteLine($"AKS: Configured Kestrel to listen on port {port}");
             }
             else
             {
                 // In development, use the port from launchSettings.json or default to 5190
                 var port = Environment.GetEnvironmentVariable("ASPNETCORE_URLS") ?? "http://localhost:5190;https://localhost:7126";
                 builder.WebHost.UseUrls(port);
+                Console.WriteLine($"Local: Configured URLs: {port}");
             }
 
             // Add services to the container
             builder.Services.AddControllers();
+            
+            // Configure Data Protection for AKS
+            if (isAKS)
+            {
+                // Use a persistent directory for data protection keys in AKS
+                var dataProtectionPath = "/tmp/data-protection-keys";
+                Directory.CreateDirectory(dataProtectionPath);
+                
+                builder.Services.AddDataProtection()
+                    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionPath));
+                
+                Console.WriteLine($"Data Protection keys will be stored in: {dataProtectionPath}");
+            }
+            else
+            {
+                // For local development, use default data protection
+                builder.Services.AddDataProtection();
+            }
             
             // Add health checks for AKS
             if (isAKS)

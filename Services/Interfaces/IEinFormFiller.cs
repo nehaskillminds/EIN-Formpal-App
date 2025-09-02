@@ -43,6 +43,6 @@ namespace EinAutomation.Api.Services.Interfaces
         Dictionary<string, object?> GetDefaults(CaseData? data);
 
         // Browser
-        void InitializeDriver(bool useProxy, string? proxyHost, int? proxyPort, string? proxyUsername, string? proxyPassword, string recordId);
+        Task InitializeDriver(bool useProxy, string? proxyHost, int? proxyPort, string? proxyUsername, string? proxyPassword, string recordId);
     }
 }

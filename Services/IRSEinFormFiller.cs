@@ -100,6 +100,24 @@ namespace EinAutomation.Api.Services
             { "Other", "other_option" }
         };
 
+        /// <summary>
+        /// Detects whether the application is running in AKS environment
+        /// </summary>
+        /// <returns>True if running in AKS, false if running locally</returns>
+        private bool IsAKSEnvironment()
+        {
+            var isAKS = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Production" || 
+                        Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Staging" ||
+                        !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KUBERNETES_SERVICE_HOST"));
+            
+            _logger.LogInformation("Environment detection - isAKS: {IsAKS}, ASPNETCORE_ENVIRONMENT: {Environment}, KUBERNETES_SERVICE_HOST: {K8sHost}", 
+                isAKS, 
+                Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), 
+                Environment.GetEnvironmentVariable("KUBERNETES_SERVICE_HOST"));
+            
+            return isAKS;
+        }
+
         public IRSEinFormFiller(
             ILogger<IRSEinFormFiller>? logger,
             IBlobStorageService? blobStorageService,
@@ -113,6 +131,8 @@ namespace EinAutomation.Api.Services
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _errorMessageExtractionService = errorMessageExtractionService ?? throw new ArgumentNullException(nameof(errorMessageExtractionService));
         }
+
+
 
         // Method 7A: Use Chrome DevTools Protocol to print to PDF from an existing Puppeteer page
         private async Task<byte[]?> TryPuppeteerSharpPrintToPdf(IPage page, CancellationToken cancellationToken)
@@ -265,13 +285,13 @@ namespace EinAutomation.Api.Services
                 if (Driver == null)
                 {
                     _logger.LogWarning("Driver was null; calling InitializeDriver()");
-
+                    
                     //todo: mechanism to detect if AKS or local
                     if (data == null || string.IsNullOrEmpty(data.RecordId))
                     {
                         throw new ArgumentException("CaseData and RecordId must be provided.", nameof(data));
                     }
-                    InitializeDriver(false, null, null, null, null, data.RecordId);
+                    await InitializeDriver(false, null, null, null, null, data.RecordId);
 
                     if (Driver == null)
                     {
@@ -518,7 +538,7 @@ namespace EinAutomation.Api.Services
                     throw new AutomationError("Failed to select Physical State");
                 }
 
-                if (!FillField(By.Id("physicalZipCode"), CleanAddress(defaults["zip_code"]?.ToString()), "Physical Zip"))
+                if (!FillField(By.Id("physicalZipCode"), CleanAddress(ExtractFirstFiveDigits(defaults["zip_code"]?.ToString())), "Physical Zip"))
                 {
                     CaptureBrowserLogs();
                     throw new AutomationError("Failed to fill Physical Zip");
@@ -626,7 +646,7 @@ namespace EinAutomation.Api.Services
                             throw new AutomationError("Failed to select Mailing State");
                         }
                     }
-                    if (!FillField(By.Id("mailingZipCode"), CleanAddress(mailingAddressDict.GetValueOrDefault("mailingZip", "")), "Zip"))
+                    if (!FillField(By.Id("mailingZipCode"), CleanAddress(ExtractFirstFiveDigits(mailingAddressDict.GetValueOrDefault("mailingZip", ""))), "Zip"))
                     {
                         CaptureBrowserLogs();
                         throw new AutomationError("Failed to fill Mailing Zip");
@@ -662,20 +682,8 @@ namespace EinAutomation.Api.Services
                     mappedType = EntityTypeMapping.GetValueOrDefault(entityTypeLabel, string.Empty).Trim();
                     var entityGroup = RadioButtonMapping.GetValueOrDefault(mappedType);
 
-                    if (!string.IsNullOrEmpty(entityGroup))
-                    {
-                        var suffixes = suffixRulesByGroup.GetValueOrDefault(entityGroup, new string[] { });
-                        foreach (var suffix in suffixes)
-                        {
-                            if (Regex.IsMatch(businessName, $@"\b{suffix}\s*$", RegexOptions.IgnoreCase))
-                            {
-                                businessName = Regex.Replace(businessName, $@"\b{suffix}\s*$", "", RegexOptions.IgnoreCase).Trim();
-                                _logger.LogInformation($"Stripped suffix '{suffix}' from business name: '{originalName}' -> '{businessName}'");
-                                break;
-                            }
-                        }
-                    }
-
+                    // Preserve suffixes for trade names and legal names
+                    // Only clean special characters, but keep suffixes
                     businessName = Regex.Replace(businessName, @"[^a-zA-Z0-9\s\-&]", "");
                 }
                 catch (Exception ex)
@@ -790,25 +798,29 @@ namespace EinAutomation.Api.Services
                     {"OTHER_NON_PROFITlegalStructureInputid", new[] {"LLC", "LC", "PLLC", "PA", "Corp", "Inc"}}
                 };
 
-                        string NormalizeName(string name, string group)
+                        string NormalizeName(string name, string group, bool preserveSuffixes = false)
                         {
                             string result = Regex.Replace(name, @"[^a-zA-Z0-9\s\-&]", "").Trim();
-                            var suffixes = suffixesByGroup.GetValueOrDefault(group, new string[] { });
-
-                            foreach (var suffix in suffixes)
+                            
+                            if (!preserveSuffixes)
                             {
-                                if (Regex.IsMatch(result, $@"\b{suffix}\s*$", RegexOptions.IgnoreCase))
+                                var suffixes = suffixesByGroup.GetValueOrDefault(group, new string[] { });
+
+                                foreach (var suffix in suffixes)
                                 {
-                                    result = Regex.Replace(result, $@"\b{suffix}\s*$", "", RegexOptions.IgnoreCase).Trim();
-                                    break;
+                                    if (Regex.IsMatch(result, $@"\b{suffix}\s*$", RegexOptions.IgnoreCase))
+                                    {
+                                        result = Regex.Replace(result, $@"\b{suffix}\s*$", "", RegexOptions.IgnoreCase).Trim();
+                                        break;
+                                    }
                                 }
                             }
 
                             return result;
                         }
 
-                        var normalizedTrade = NormalizeName(tradeName, entityGroup);
-                        var normalizedEntity = NormalizeName(entityName, entityGroup);
+                        var normalizedTrade = NormalizeName(tradeName, entityGroup, preserveSuffixes: true);
+                        var normalizedEntity = NormalizeName(entityName, entityGroup, preserveSuffixes: true);
 
                         if (!string.Equals(normalizedTrade, normalizedEntity, StringComparison.OrdinalIgnoreCase))
                         {
@@ -1128,7 +1140,7 @@ namespace EinAutomation.Api.Services
                     {
                         throw new ArgumentException("CaseData and RecordId must be provided.", nameof(data));
                     }
-                    InitializeDriver(false, null, null, null, null, data.RecordId);
+                    await InitializeDriver(false, null, null, null, null, data.RecordId);
 
                     if (Driver == null)
                     {
@@ -1335,7 +1347,7 @@ namespace EinAutomation.Api.Services
                 CaptureBrowserLogs();
 
                 if (!FillField(By.XPath("//input[@id='mailingZipCode']"),
-                    CleanAddress(mailingAddressDict.GetValueOrDefault("mailingZip", "")),
+                    CleanAddress(ExtractFirstFiveDigits(mailingAddressDict.GetValueOrDefault("mailingZip", ""))),
                     "Zip"))
                 {
                     CaptureBrowserLogs();
@@ -1378,10 +1390,9 @@ namespace EinAutomation.Api.Services
                 try
                 {
                     businessName = ((string?)defaults["entity_name"] ?? string.Empty).Trim();
+                    // Preserve suffixes for legal business names
+                    // Only clean special characters, but keep suffixes
                     businessName = Regex.Replace(businessName, @"[^a-zA-Z0-9\s\-&]", "");
-                    var suffixes = new[] { "Corp", "Inc", "LLC", "LC", "PLLC", "PA", "L.L.C.", "INC.", "CORPORATION", "LIMITED" };
-                    var pattern = $@"\b(?:{string.Join("|", suffixes.Select(Regex.Escape))})\b\.?$";
-                    businessName = Regex.Replace(businessName, pattern, "", RegexOptions.IgnoreCase).Trim();
                 }
                 catch (Exception ex)
                 {
@@ -1473,8 +1484,17 @@ namespace EinAutomation.Api.Services
                 {
                     CaptureBrowserLogs();
 
+                    // Force Chrome to use the correct download directory via JavaScript
+                    ForceDownloadDirectoryViaJavaScript();
+
+                    // Log download directory state before PDF capture
+                    LogDownloadDirectoryState("Before PDF capture");
+
                     // Capture confirmation page using the base CapturePageAsPdf method
                     var (blobUrl, success) = await CapturePageAsPdf(data, CancellationToken.None);
+
+                    // Log download directory state after PDF capture
+                    LogDownloadDirectoryState("After PDF capture");
 
                     if (success && !string.IsNullOrEmpty(blobUrl))
                     {
@@ -1564,6 +1584,100 @@ namespace EinAutomation.Api.Services
             }
         }
 
+        private void LogDownloadDirectoryState(string context)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    _logger.LogWarning($"{context}: ChromeDownloadDirectory is not configured");
+                    return;
+                }
+
+                _logger.LogInformation($"{context}: Checking download directory: {ChromeDownloadDirectory}");
+                
+                if (Directory.Exists(ChromeDownloadDirectory))
+                {
+                    var files = Directory.GetFiles(ChromeDownloadDirectory);
+                    var pdfFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.pdf");
+                    var crdownloadFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.crdownload");
+                    
+                    _logger.LogInformation($"{context}: Directory exists. Total files: {files.Length}, PDF files: {pdfFiles.Length}, Downloading files: {crdownloadFiles.Length}");
+                    
+                    if (files.Length > 0)
+                    {
+                        _logger.LogInformation($"{context}: Files in directory: {string.Join(", ", files.Select(Path.GetFileName))}");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning($"{context}: Download directory does not exist: {ChromeDownloadDirectory}");
+                }
+
+                // Also check the default downloads directory to see if files are being downloaded there
+                var defaultDownloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                if (Directory.Exists(defaultDownloadsPath))
+                {
+                    var defaultFiles = Directory.GetFiles(defaultDownloadsPath);
+                    var defaultPdfFiles = Directory.GetFiles(defaultDownloadsPath, "*.pdf");
+                    var defaultCrdownloadFiles = Directory.GetFiles(defaultDownloadsPath, "*.crdownload");
+                    
+                    if (defaultFiles.Length > 0 || defaultPdfFiles.Length > 0 || defaultCrdownloadFiles.Length > 0)
+                    {
+                        _logger.LogWarning($"{context}: Found files in default Downloads directory! Total: {defaultFiles.Length}, PDF: {defaultPdfFiles.Length}, Downloading: {defaultCrdownloadFiles.Length}");
+                        if (defaultFiles.Length > 0)
+                        {
+                            _logger.LogWarning($"{context}: Files in default Downloads: {string.Join(", ", defaultFiles.Select(Path.GetFileName))}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"{context}: Error checking download directory: {ex.Message}");
+            }
+        }
+
+        private void ForceDownloadDirectoryViaJavaScript()
+        {
+            try
+            {
+                if (Driver == null || string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    _logger.LogWarning("Cannot force download directory via JavaScript - Driver or ChromeDownloadDirectory is null");
+                    return;
+                }
+
+                // Try to set download directory via JavaScript
+                var script = @"
+                    try {
+                        // Override any download-related functions to use our directory
+                        if (window.chrome && window.chrome.downloads) {
+                            console.log('Chrome downloads API available');
+                        }
+                        
+                        // Override any download links to force download behavior
+                        var links = document.querySelectorAll('a[href*="".pdf""]');
+                        links.forEach(function(link) {
+                            link.setAttribute('download', '');
+                            link.setAttribute('target', '_blank');
+                        });
+                        
+                        return 'Download directory override applied';
+                    } catch (e) {
+                        return 'Error: ' + e.message;
+                    }
+                ";
+
+                var result = ((IJavaScriptExecutor)Driver).ExecuteScript(script);
+                _logger.LogInformation("JavaScript download directory override result: {Result}", result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error forcing download directory via JavaScript: {Error}", ex.Message);
+            }
+        }
+
         public override async Task<(bool Success, string? Message, string? AzureBlobUrl)> RunAutomation(CaseData? data, Dictionary<string, object> jsonData)
         {
             string? einNumber = string.Empty;
@@ -1585,12 +1699,14 @@ namespace EinAutomation.Api.Services
                     jsonData["missing_fields"] = missingFields;
                 }
 
-                //todo: mechanism to detect if AKS or local
+                // Auto-detect environment for driver initialization
+                var isAKS = IsAKSEnvironment();
+                
                 if (data == null || string.IsNullOrEmpty(data.RecordId))
                 {
                     throw new ArgumentException("CaseData and RecordId must be provided.", nameof(data));
                 }
-                InitializeDriver(false, null, null, null, null, data.RecordId);
+                await InitializeDriver(isAKS, null, null, null, null, data.RecordId);
 
                 if (string.IsNullOrWhiteSpace(data?.EntityType))
                 {
@@ -1608,14 +1724,14 @@ namespace EinAutomation.Api.Services
                 // _______________________________________________final submit deployment ________________________________
 
                 // // 5. Continue to EIN Letter
-                //  if (!ClickButtonByAriaLabel("Submit EIN Request", "Submit EIN Request"))
-                // {
-                //     CaptureBrowserLogs();
-                //     throw new AutomationError("Failed to click final Submit Button before EIN");
-                // }
+                 if (!ClickButtonByAriaLabel("Submit EIN Request", "Submit EIN Request"))
+                {
+                    CaptureBrowserLogs();
+                    throw new AutomationError("Failed to click final Submit Button before EIN");
+                }
 
 
-                // (einNumber, pdfAzureUrl, success) = await FinalSubmit(data, jsonData, CancellationToken.None);
+                (einNumber, pdfAzureUrl, success) = await FinalSubmit(data, jsonData, CancellationToken.None);
 
 
                 // Type "yes" to click final submit button____________________________local testing_____________________
@@ -1710,7 +1826,7 @@ namespace EinAutomation.Api.Services
                 }
 
                 // BROWSER KEPT OPEN FOR DEBUGGING - Cleanup commented out
-                // Cleanup();
+                Cleanup();
                 _logger.LogInformation($"Browser instance kept open for debugging - Record ID: {data?.RecordId ?? "unknown"}");
 
                 // Cleanup the record-specific download directory
@@ -2183,6 +2299,12 @@ namespace EinAutomation.Api.Services
                 var downloadedFilePath = await FileHelper.WaitForFileDownloadAsync(ChromeDownloadDirectory, 30000, 1000, cancellationToken) ??
                     throw new Exception("Aggressive scan timeout - no valid PDF found in Chrome download directory");
 
+                // Additional safety check to ensure the file path is valid
+                if (string.IsNullOrEmpty(downloadedFilePath))
+                {
+                    throw new Exception("Downloaded file path is null or empty");
+                }
+
                 var fileBytes = await File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
                 if (fileBytes != null && fileBytes.Length > 0)
                 {
@@ -2263,8 +2385,16 @@ namespace EinAutomation.Api.Services
                         // If we have PDF files and no partial downloads, we're done
                         if (pdfFiles.Length > 0 && crdownloadFiles.Length == 0)
                         {
-                            var downloadedFilePath = pdfFiles[0];
-                            var fileBytes = await System.IO.File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
+                                                    var downloadedFilePath = pdfFiles[0];
+                        
+                        // Additional safety check to ensure the file path is valid
+                        if (string.IsNullOrEmpty(downloadedFilePath))
+                        {
+                            _logger.LogWarning("Downloaded file path is null or empty");
+                            continue;
+                        }
+                        
+                        var fileBytes = await System.IO.File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
 
                             if (fileBytes != null && fileBytes.Length > 0)
                             {
@@ -2332,6 +2462,12 @@ namespace EinAutomation.Api.Services
 
                         var downloadedFilePath = await FileHelper.WaitForFileDownloadAsync(ChromeDownloadDirectory, 30000, 1000, cancellationToken) ??
                             throw new Exception("Aggressive scan timeout - no valid PDF found in Chrome download directory");
+
+                        // Additional safety check to ensure the file path is valid
+                        if (string.IsNullOrEmpty(downloadedFilePath))
+                        {
+                            throw new Exception("Downloaded file path is null or empty");
+                        }
 
                         var fileBytes = await File.ReadAllBytesAsync(downloadedFilePath, cancellationToken);
                         if (fileBytes != null && fileBytes.Length > 0)

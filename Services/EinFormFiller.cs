@@ -35,6 +35,29 @@ namespace EinAutomation.Api.Services
             Timeout = timeout;
         }
 
+        /// <summary>
+        /// Extracts the first 5 digits from a zip code string.
+        /// Handles various zip code formats including 5-digit, 9-digit (ZIP+4), and invalid formats.
+        /// </summary>
+        /// <param name="zipCode">The zip code string to process</param>
+        /// <returns>The first 5 digits of the zip code, or empty string if invalid</returns>
+        protected string ExtractFirstFiveDigits(string? zipCode)
+        {
+            if (string.IsNullOrWhiteSpace(zipCode))
+                return string.Empty;
+
+            // Remove any non-digit characters and get only the first 5 digits
+            var digitsOnly = Regex.Replace(zipCode, @"\D", "");
+            
+            if (digitsOnly.Length >= 5)
+            {
+                return digitsOnly.Substring(0, 5);
+            }
+            
+            // If less than 5 digits, return as is (this handles edge cases)
+            return digitsOnly;
+        }
+
         public async Task<(string? BlobUrl, bool Success)> CaptureSubmissionPageAsPdf(CaseData? data, CancellationToken cancellationToken)
         {
             try
@@ -876,6 +899,9 @@ namespace EinAutomation.Api.Services
                 // Wait for page to be fully loaded
                 await WaitForPageLoadAsync(cancellationToken);
 
+                // Log download directory state before PDF generation
+                LogDownloadDirectoryState("Before PDF generation");
+
                 string? blobUrl = null;
 
                 // --- Primary PDF generation using Chrome CDP ---
@@ -914,6 +940,9 @@ namespace EinAutomation.Api.Services
                         return (null, false);
                     }
                 }
+
+                // Log download directory state after PDF generation
+                LogDownloadDirectoryState("After PDF generation");
 
                 // --- Notify Salesforce if blob upload succeeded ---
                 if (!string.IsNullOrEmpty(blobUrl))
@@ -1529,7 +1558,7 @@ namespace EinAutomation.Api.Services
                 {"business_address_2", data.BusinessAddress2 ?? ""},
 
                 {"city", data.City ?? ""},
-                {"zip_code", data.ZipCode ?? ""},
+                {"zip_code", ExtractFirstFiveDigits(data.ZipCode)},
                 {"business_description", data.BusinessDescription ?? "Any and lawful business"},
                 {"formation_date", data.FormationDate ?? ""},
                 {"county", data.County ?? ""},
@@ -1541,7 +1570,7 @@ namespace EinAutomation.Api.Services
             };
         }
         
-        public void InitializeDriver(bool useProxy, string? proxyHost, int? proxyPort, string? proxyUsername, string? proxyPassword, string recordId)
+        public async Task InitializeDriver(bool useProxy, string? proxyHost, int? proxyPort, string? proxyUsername, string? proxyPassword, string recordId)
         {
             try
             {
@@ -1549,15 +1578,55 @@ namespace EinAutomation.Api.Services
 
                 if (useProxy) 
                 {
-                    // Store the download directory path for PDF capture methods
+                    // For AKS, we'll let DriverInitializer create a unique profile directory
+                    // The download directory will be within the unique profile
                     ChromeDownloadDirectory = "/tmp/chrome-home/Downloads";
+                    Console.WriteLine($"AKS: Initial ChromeDownloadDirectory set to: {ChromeDownloadDirectory}");
                     Driver = DriverInitializer.InitializeAKS(ChromeDownloadDirectory, recordId);
+                    
+                    // For the new approach, we need to get the actual download directory from the driver
+                    // Since each profile has its own downloads folder, we'll use a pattern to find it
+                    var tempPath = Path.GetTempPath();
+                    var chromeProfileDirs = Directory.GetDirectories(tempPath, "chrome-profile-*");
+                    
+                    if (chromeProfileDirs.Length > 0)
+                    {
+                        // Use the most recent profile directory
+                        var latestProfileDir = chromeProfileDirs.OrderByDescending(d => Directory.GetCreationTime(d)).First();
+                        ChromeDownloadDirectory = Path.Combine(latestProfileDir, "downloads");
+                        Console.WriteLine($"AKS: Found Chrome profile directory: {latestProfileDir}");
+                        Console.WriteLine($"AKS: Final ChromeDownloadDirectory set to: {ChromeDownloadDirectory}");
+                    }
+                    else
+                    {
+                        // Fallback to the original approach
+                        ChromeDownloadDirectory = Path.Combine(ChromeDownloadDirectory, recordId);
+                        Console.WriteLine($"AKS: Fallback ChromeDownloadDirectory set to: {ChromeDownloadDirectory}");
+                    }
+                    
+                    // Verify AKS directory structure
+                    try
+                    {
+                        Console.WriteLine($"AKS: Download directory exists: {Directory.Exists(ChromeDownloadDirectory)} - {ChromeDownloadDirectory}");
+                        
+                        // Test write permissions
+                        var testFile = Path.Combine(ChromeDownloadDirectory, "aks-test.tmp");
+                        File.WriteAllText(testFile, "AKS write test");
+                        File.Delete(testFile);
+                        Console.WriteLine($"AKS: Directory {ChromeDownloadDirectory} is writable");
+                    }
+                    catch (Exception aksEx)
+                    {
+                        Console.WriteLine($"AKS: WARNING - Directory verification failed: {aksEx.Message}");
+                    }
                 }
                 else 
                 {
                     // Store the download directory path for PDF capture methods
                     ChromeDownloadDirectory = Path.Combine(Path.GetTempPath(), $"chrome-downloads-{recordId}");                    
                     Driver = DriverInitializer.InitializeLocal(ChromeDownloadDirectory, recordId);
+                    // Update ChromeDownloadDirectory to point to the actual download directory (with recordId subdirectory)
+                    ChromeDownloadDirectory = Path.Combine(ChromeDownloadDirectory, recordId);
                 }
 
                 //todo: the webDriverWaiter is not initialize for the AKS, pls explain?
@@ -1566,6 +1635,16 @@ namespace EinAutomation.Api.Services
                 Console.WriteLine("- WebDriver initialized successfully");
 
                 _logger.LogInformation("WebDriver initialized successfully for local testing - Download directory: {ChromeDownloadDirectory}", ChromeDownloadDirectory);
+                Console.WriteLine($"Final ChromeDownloadDirectory set to: {ChromeDownloadDirectory}");
+                
+                // Verify download directory configuration
+                await VerifyDownloadDirectoryConfiguration();
+                
+                // Force Chrome to use the correct download directory via CDP
+                await ConfigureDownloadDirectoryViaCDP();
+                
+                // Additional verification and cleanup
+                await EnsureDownloadDirectoryIsCorrect();
             }
             catch (Exception ex)
             {
@@ -1635,6 +1714,198 @@ namespace EinAutomation.Api.Services
                 _logger.LogError(ex, "Error during Chrome driver diagnostics");
             }
         }
+        private void LogDownloadDirectoryState(string context)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    _logger.LogWarning($"{context}: ChromeDownloadDirectory is not configured");
+                    return;
+                }
+
+                _logger.LogInformation($"{context}: Checking download directory: {ChromeDownloadDirectory}");
+                
+                if (Directory.Exists(ChromeDownloadDirectory))
+                {
+                    var files = Directory.GetFiles(ChromeDownloadDirectory);
+                    var pdfFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.pdf");
+                    var crdownloadFiles = Directory.GetFiles(ChromeDownloadDirectory, "*.crdownload");
+                    
+                    _logger.LogInformation($"{context}: Directory exists. Total files: {files.Length}, PDF files: {pdfFiles.Length}, Downloading files: {crdownloadFiles.Length}");
+                    
+                    if (files.Length > 0)
+                    {
+                        _logger.LogInformation($"{context}: Files in directory: {string.Join(", ", files.Select(Path.GetFileName))}");
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning($"{context}: Download directory does not exist: {ChromeDownloadDirectory}");
+                }
+
+                // Also check the default downloads directory to see if files are being downloaded there
+                var defaultDownloadsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                if (Directory.Exists(defaultDownloadsPath))
+                {
+                    var defaultFiles = Directory.GetFiles(defaultDownloadsPath);
+                    var defaultPdfFiles = Directory.GetFiles(defaultDownloadsPath, "*.pdf");
+                    var defaultCrdownloadFiles = Directory.GetFiles(defaultDownloadsPath, "*.crdownload");
+                    
+                    if (defaultFiles.Length > 0 || defaultPdfFiles.Length > 0 || defaultCrdownloadFiles.Length > 0)
+                    {
+                        _logger.LogWarning($"{context}: Found files in default Downloads directory! Total: {defaultFiles.Length}, PDF: {defaultPdfFiles.Length}, Downloading: {defaultCrdownloadFiles.Length}");
+                        if (defaultFiles.Length > 0)
+                        {
+                            _logger.LogWarning($"{context}: Files in default Downloads: {string.Join(", ", defaultFiles.Select(Path.GetFileName))}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"{context}: Error checking download directory: {ex.Message}");
+            }
+        }
+
+        private async Task EnsureDownloadDirectoryIsCorrect()
+        {
+            try
+            {
+                if (Driver == null || string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    _logger.LogWarning("Cannot ensure download directory is correct - Driver or ChromeDownloadDirectory is null");
+                    return;
+                }
+
+                // Clear any existing files in the download directory
+                if (Directory.Exists(ChromeDownloadDirectory))
+                {
+                    foreach (var file in Directory.GetFiles(ChromeDownloadDirectory))
+                    {
+                        try
+                        {
+                            File.Delete(file);
+                            _logger.LogDebug("Cleaned up existing file in download directory: {File}", Path.GetFileName(file));
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("Could not delete existing file {File}: {Error}", Path.GetFileName(file), ex.Message);
+                        }
+                    }
+                }
+
+                // Ensure the directory exists and is writable
+                Directory.CreateDirectory(ChromeDownloadDirectory);
+                
+                // Test write access
+                var testFile = Path.Combine(ChromeDownloadDirectory, "test.txt");
+                await File.WriteAllTextAsync(testFile, "test");
+                File.Delete(testFile);
+                
+                _logger.LogInformation("Download directory is ready: {Directory}", ChromeDownloadDirectory);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error ensuring download directory is correct: {Error}", ex.Message);
+            }
+        }
+
+        private async Task ConfigureDownloadDirectoryViaCDP()
+        {
+            try
+            {
+                if (Driver == null || string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    _logger.LogWarning("Cannot configure download directory via CDP - Driver or ChromeDownloadDirectory is null");
+                    return;
+                }
+
+                if (Driver is ChromeDriver chromeDriver)
+                {
+                    try
+                    {
+                        // Configure download behavior via CDP
+                        var downloadBehavior = new Dictionary<string, object>
+                        {
+                            ["downloadPath"] = ChromeDownloadDirectory,
+                            ["promptForDownload"] = false
+                        };
+
+                        chromeDriver.ExecuteCdpCommand("Page.setDownloadBehavior", downloadBehavior);
+                        _logger.LogInformation("Successfully configured Chrome download behavior via CDP for directory: {DownloadDir}", ChromeDownloadDirectory);
+                    }
+                    catch (Exception cdpEx)
+                    {
+                        _logger.LogWarning("Failed to configure download directory via CDP: {Error}", cdpEx.Message);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error configuring download directory via CDP: {Error}", ex.Message);
+            }
+        }
+
+        private async Task VerifyDownloadDirectoryConfiguration()
+        {
+            try
+            {
+                if (Driver == null)
+                {
+                    _logger.LogWarning("Cannot verify download directory - Driver is null");
+                    return;
+                }
+
+                // Check if the download directory exists and is writable
+                if (!string.IsNullOrEmpty(ChromeDownloadDirectory))
+                {
+                    if (Directory.Exists(ChromeDownloadDirectory))
+                    {
+                        _logger.LogInformation("Download directory exists: {Directory}", ChromeDownloadDirectory);
+                        
+                        // Test write access
+                        var testFile = Path.Combine(ChromeDownloadDirectory, "test.txt");
+                        try
+                        {
+                            await File.WriteAllTextAsync(testFile, "test");
+                            File.Delete(testFile);
+                            _logger.LogInformation("Download directory is writable: {Directory}", ChromeDownloadDirectory);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning("Download directory is not writable: {Directory}, Error: {Error}", ChromeDownloadDirectory, ex.Message);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Download directory does not exist: {Directory}", ChromeDownloadDirectory);
+                    }
+                }
+
+                // Verify Chrome download settings via JavaScript
+                try
+                {
+                    var downloadSettings = ((IJavaScriptExecutor)Driver).ExecuteScript(@"
+                        return {
+                            defaultDirectory: window.chrome?.downloads?.defaultDirectory || 'Not available',
+                            promptForDownload: window.chrome?.downloads?.promptForDownload || 'Not available'
+                        };
+                    ");
+                    
+                    _logger.LogInformation("Chrome download settings: {Settings}", downloadSettings);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Could not verify Chrome download settings via JavaScript: {Error}", ex.Message);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("Error verifying download directory configuration: {Error}", ex.Message);
+            }
+        }
+
         public virtual Task<byte[]?> GetBrowserLogsAsync(CaseData? data, CancellationToken ct)
         {
             if (data == null || Driver == null)

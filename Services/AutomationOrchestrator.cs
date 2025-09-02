@@ -2,6 +2,7 @@ using EinAutomation.Api.Models;
 using EinAutomation.Api.Services.Interfaces;
 using Polly.Contrib.WaitAndRetry;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 #nullable enable
 
@@ -28,6 +29,29 @@ namespace EinAutomation.Api.Services
             _salesforceClient = salesforceClient ?? throw new ArgumentNullException(nameof(salesforceClient));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _errorMessageExtractionService = errorMessageExtractionService ?? throw new ArgumentNullException(nameof(errorMessageExtractionService));
+        }
+
+        /// <summary>
+        /// Extracts the first 5 digits from a zip code string.
+        /// Handles various zip code formats including 5-digit, 9-digit (ZIP+4), and invalid formats.
+        /// </summary>
+        /// <param name="zipCode">The zip code string to process</param>
+        /// <returns>The first 5 digits of the zip code, or empty string if invalid</returns>
+        private string ExtractFirstFiveDigits(string? zipCode)
+        {
+            if (string.IsNullOrWhiteSpace(zipCode))
+                return string.Empty;
+
+            // Remove any non-digit characters and get only the first 5 digits
+            var digitsOnly = Regex.Replace(zipCode, @"\D", "");
+            
+            if (digitsOnly.Length >= 5)
+            {
+                return digitsOnly.Substring(0, 5);
+            }
+            
+            // If less than 5 digits, return as is (this handles edge cases)
+            return digitsOnly;
         }
 
         public async Task<(bool Success, string EinNumber, string? AzureBlobUrl)> RunAsync(CaseData data, CancellationToken ct)
@@ -170,7 +194,7 @@ namespace EinAutomation.Api.Services
             { "entity_state", data.EntityState },
             { "business_address_2", data.BusinessAddress2 },
             { "city", data.City },
-            { "zip_code", data.ZipCode },
+            { "zip_code", ExtractFirstFiveDigits(data.ZipCode) },
             { "quarter_of_first_payroll", data.QuarterOfFirstPayroll },
             { "entity_state_record_state", data.EntityStateRecordState },
             { "case_contact_name", data.CaseContactName },
